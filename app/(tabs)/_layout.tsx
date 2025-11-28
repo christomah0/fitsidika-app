@@ -17,17 +17,31 @@ export default function TabLayout() {
         tabBarButton: HapticTab,
       }}>
       <Tabs.Screen
-        name="index"
+        name="(accueil)"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: 'Accueil',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="waveform.path.ecg" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="(vitaux)"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Vitaux',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="heart" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="(medocs)"
+        options={{
+          title: 'Médocs',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="pill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="(messages)"
+        options={{
+          title: 'Messages',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="bubble.left" color={color} />,
         }}
       />
     </Tabs>

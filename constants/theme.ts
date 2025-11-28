@@ -5,7 +5,7 @@
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
+const tintColorLight = '#34A853'; // Don't change this default tint color (Green background)
 const tintColorDark = '#fff';
 
 export const Colors = {
