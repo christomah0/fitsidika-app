@@ -1,6 +1,4 @@
-// ============================================
-// COMPOSANT ALERTE DE RENOUVELLEMENT
-// ============================================
+// /app/(tabs)/(medocs)/RenewalAlert.tsx
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
@@ -15,64 +13,71 @@ interface RenewalAlertProps {
 export const RenewalAlert: React.FC<RenewalAlertProps> = ({
   medicationName,
   daysLeft,
-  onContactDoctor
+  onContactDoctor,
 }) => {
   return (
     <View style={styles.container}>
       <View style={styles.iconContainer}>
-        <Ionicons name="alert-circle-outline" size={24} color="#FF9800" />
+        {/* L'icône dans l'image est plus une alerte discrète */}
+        <Ionicons name="alert-triangle-outline" size={20} color="#FF9800" />
       </View>
       <View style={styles.content}>
         <Text style={styles.title}>Renouvellement</Text>
         <Text style={styles.message}>
           {medicationName} - Dans {daysLeft} jours
         </Text>
-        <TouchableOpacity style={styles.button} onPress={onContactDoctor}>
-          <Text style={styles.buttonText}>Contacter le médecin</Text>
-        </TouchableOpacity>
       </View>
+      {/* Le bouton est à droite et non centré en dessous */}
+      <TouchableOpacity style={styles.button} onPress={onContactDoctor}>
+        <Text style={styles.buttonText}>Contacter le médecin</Text>
+      </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: '#FFF3E0', // Fond jaune pâle
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
     flexDirection: 'row',
+    alignItems: 'center', // Alignement vertical au centre
     borderWidth: 1,
     borderColor: '#FFB74D',
   },
   iconContainer: {
     marginRight: 12,
+    // La couleur du fond est la même que le conteneur
   },
   content: {
     flex: 1,
+    marginRight: 12, // Marge entre le texte et le bouton
   },
   title: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#212121',
+    color: '#FF9800', // Titre en orange
     marginBottom: 4,
   },
   message: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 12,
+    // Suppression de la marge inférieure
   },
   button: {
-    backgroundColor: '#FFFFFF',
-    padding: 10,
+    backgroundColor: 'transparent', // Bouton sans fond
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderRadius: 8,
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 1, // Bordure autour du bouton
     borderColor: '#FF9800',
   },
   buttonText: {
     color: '#FF9800',
-    fontSize: 14,
+    fontSize: 12, // Texte plus petit pour le bouton
     fontWeight: '600',
+    textAlign: 'center',
   },
 });

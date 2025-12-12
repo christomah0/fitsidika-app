@@ -1,6 +1,4 @@
-// ============================================
-// SERVICE DE DONNÉES MÉDICAMENTS
-// ============================================
+// /services/medicationService.ts
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Medication, DailyObservance, WeeklyObservance } from '../constants/medicationTypes';
@@ -10,11 +8,35 @@ const MEDICATIONS_KEY = '@medications';
 const OBSERVANCE_KEY = '@observance';
 
 export class MedicationService {
-  // Récupérer tous les médicaments
+  // Récupérer tous les médicaments (avec statut quotidien et jours de renouvellement calculés)
   static async getAllMedications(): Promise<Medication[]> {
     try {
       const data = await AsyncStorage.getItem(MEDICATIONS_KEY);
-      return data ? JSON.parse(data) : [];
+      const medications: Medication[] = data ? (JSON.parse(data) as Medication[]) : [];
+      
+      const todayKey = this.getObservanceKey(new Date());
+      const observanceData = await AsyncStorage.getItem(todayKey);
+      const todayObservance: Record<string, boolean> = observanceData ? JSON.parse(observanceData) : {};
+      
+      // Calculer le statut quotidien et les jours restants pour le renouvellement
+      return medications.map(med => {
+          let currentStatus = 'pending';
+          if (todayObservance[med.id] === true) {
+              currentStatus = 'taken';
+          }
+          
+          let renewalDaysLeft: number | undefined = undefined;
+          if (med.renewalDate) {
+              renewalDaysLeft = this.calculateRenewalDaysLeft(med.renewalDate);
+          }
+          
+          return {
+              ...med,
+              status: currentStatus,
+              renewalDaysLeft: renewalDaysLeft, 
+          } as Medication;
+      });
+
     } catch (error) {
       console.error('Erreur récupération médicaments:', error);
       return [];
@@ -22,7 +44,7 @@ export class MedicationService {
   }
 
   // Ajouter un médicament
-  static async addMedication(medication: Omit<Medication, 'id'>): Promise<Medication> {
+  static async addMedication(medication: Omit<Medication, 'id' | 'status' | 'renewalDaysLeft'>): Promise<Medication> {
     try {
       const medications = await this.getAllMedications();
       const newMedication: Medication = {
@@ -30,11 +52,13 @@ export class MedicationService {
         id: Date.now().toString(),
         status: 'pending',
       };
-      
+
       medications.push(newMedication);
-      await AsyncStorage.setItem(MEDICATIONS_KEY, JSON.stringify(medications));
-      
-      // Planifier les notifications
+      // Stocker la liste brute (sans les champs calculés comme status et renewalDaysLeft)
+      const rawMedications = medications.map(({ status, renewalDaysLeft, ...rest }) => rest);
+      await AsyncStorage.setItem(MEDICATIONS_KEY, JSON.stringify(rawMedications));
+
+      // Planifier les notifications de prise
       for (const time of newMedication.timeSlots) {
         await NotificationService.scheduleMedicationReminder({
           id: newMedication.id,
@@ -43,7 +67,16 @@ export class MedicationService {
           time,
         });
       }
-      
+
+      // Planifier éventuellement un rappel de renouvellement
+      if (newMedication.renewalDate) {
+        await NotificationService.scheduleRenewalReminder({
+          id: newMedication.id,
+          name: newMedication.name,
+          renewalDate: new Date(newMedication.renewalDate),
+        });
+      }
+
       return newMedication;
     } catch (error) {
       console.error('Erreur ajout médicament:', error);
@@ -56,24 +89,43 @@ export class MedicationService {
     try {
       const medications = await this.getAllMedications();
       const index = medications.findIndex(m => m.id === id);
-      
+
       if (index === -1) {
         throw new Error('Médicament non trouvé');
       }
 
-      medications[index] = { ...medications[index], ...updates };
-      await AsyncStorage.setItem(MEDICATIONS_KEY, JSON.stringify(medications));
+      const updatedMedication: Medication = {
+        ...medications[index],
+        ...updates,
+      };
 
-      // Mettre à jour les notifications si les horaires ont changé
+      medications[index] = updatedMedication;
+      
+      // Mettre à jour la liste brute (sans les champs calculés)
+      const rawMedications = medications.map(({ status, renewalDaysLeft, ...rest }) => rest);
+      await AsyncStorage.setItem(MEDICATIONS_KEY, JSON.stringify(rawMedications));
+
+      // Mettre à jour les notifications de prise si les horaires ont changé
       if (updates.timeSlots) {
-        await NotificationService.cancelMedicationReminder(id);
-        for (const time of updates.timeSlots) {
-          await NotificationService.scheduleMedicationReminder({
+        await NotificationService.updateMedicationReminders({
             id,
-            name: medications[index].name,
-            dosage: medications[index].dosage,
-            time,
-          });
+            name: updatedMedication.name,
+            dosage: updatedMedication.dosage,
+            timeSlots: updates.timeSlots,
+        });
+      }
+
+      // Mettre à jour le rappel de renouvellement
+      if (updates.renewalDate !== undefined) {
+        if (updates.renewalDate) {
+            await NotificationService.scheduleRenewalReminder({
+                id,
+                name: updatedMedication.name,
+                renewalDate: new Date(updates.renewalDate),
+            });
+        } else {
+            // Si la date est supprimée
+            await NotificationService.cancelRenewalReminder(id);
         }
       }
     } catch (error) {
@@ -87,10 +139,14 @@ export class MedicationService {
     try {
       const medications = await this.getAllMedications();
       const filtered = medications.filter(m => m.id !== id);
-      await AsyncStorage.setItem(MEDICATIONS_KEY, JSON.stringify(filtered));
       
-      // Annuler les notifications
+      // Supprimer les champs calculés avant sauvegarde
+      const rawMedications = filtered.map(({ status, renewalDaysLeft, ...rest }) => rest);
+      await AsyncStorage.setItem(MEDICATIONS_KEY, JSON.stringify(rawMedications));
+
+      // Annuler les notifications de prise et de renouvellement
       await NotificationService.cancelMedicationReminder(id);
+      await NotificationService.cancelRenewalReminder(id);
     } catch (error) {
       console.error('Erreur suppression médicament:', error);
       throw error;
@@ -100,21 +156,20 @@ export class MedicationService {
   // Marquer comme pris
   static async markAsTaken(id: string, date: Date = new Date()): Promise<void> {
     try {
-      await this.updateMedication(id, { status: 'taken' });
       await this.recordObservance(id, date, true);
     } catch (error) {
       console.error('Erreur marquage pris:', error);
       throw error;
     }
   }
-
-  // Enregistrer l'observance
+  
+  // Enregistrer ou annuler l'observance pour le jour
   static async recordObservance(medicationId: string, date: Date, taken: boolean): Promise<void> {
     try {
       const key = this.getObservanceKey(date);
       const data = await AsyncStorage.getItem(key);
-      const observance = data ? JSON.parse(data) : {};
-      
+      const observance: Record<string, boolean> = data ? JSON.parse(data) : {};
+
       observance[medicationId] = taken;
       await AsyncStorage.setItem(key, JSON.stringify(observance));
     } catch (error) {
@@ -127,18 +182,21 @@ export class MedicationService {
   static async getWeeklyObservance(): Promise<WeeklyObservance> {
     try {
       const medications = await this.getAllMedications();
+      const rawMedicationsCount = medications.length;
       const today = new Date();
       const days: DailyObservance[] = [];
 
+      // Parcourir les 7 derniers jours
       for (let i = 6; i >= 0; i--) {
         const date = new Date(today);
         date.setDate(date.getDate() - i);
-        
+
         const key = this.getObservanceKey(date);
         const data = await AsyncStorage.getItem(key);
-        const observance = data ? JSON.parse(data) : {};
-        
-        const total = medications.length;
+        const observance: Record<string, boolean> = data ? JSON.parse(data) : {};
+
+        // Utiliser le nombre total de médicaments enregistrés
+        const total = rawMedicationsCount;
         const taken = Object.values(observance).filter(v => v === true).length;
         const percentage = total > 0 ? Math.round((taken / total) * 100) : 0;
 
@@ -152,9 +210,8 @@ export class MedicationService {
 
       const totalTaken = days.reduce((sum, day) => sum + day.taken, 0);
       const totalPossible = days.reduce((sum, day) => sum + day.total, 0);
-      const weekPercentage = totalPossible > 0 
-        ? Math.round((totalTaken / totalPossible) * 100) 
-        : 0;
+      const weekPercentage =
+        totalPossible > 0 ? Math.round((totalTaken / totalPossible) * 100) : 0;
 
       return { days, weekPercentage };
     } catch (error) {
@@ -166,19 +223,12 @@ export class MedicationService {
   // Calculer les jours restants avant renouvellement
   static calculateRenewalDaysLeft(renewalDate: string): number {
     const renewal = new Date(renewalDate);
+    renewal.setHours(0, 0, 0, 0); // Important pour ne pas fausser le calcul par l'heure
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
     const diff = renewal.getTime() - today.getTime();
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
-  }
-
-  // Obtenir les médicaments nécessitant un renouvellement
-  static async getMedicationsNeedingRenewal(): Promise<Medication[]> {
-    const medications = await this.getAllMedications();
-    return medications.filter(med => {
-      if (!med.renewalDate) return false;
-      const daysLeft = this.calculateRenewalDaysLeft(med.renewalDate);
-      return daysLeft <= 14 && daysLeft >= 0;
-    });
   }
 
   private static getObservanceKey(date: Date): string {

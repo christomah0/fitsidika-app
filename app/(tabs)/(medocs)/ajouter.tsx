@@ -1,6 +1,4 @@
-// ============================================
-// FORMULAIRE D'AJOUT DE MÉDICAMENT
-// ============================================
+
 
 import React, { useState } from 'react';
 import {
@@ -13,37 +11,47 @@ import {
   SafeAreaView,
   Platform,
   Alert,
+  Modal, 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { MedicationValidator } from '../../../services/validation'
-import { MedicationService } from '../../../services/medicationService';
+import { MedicationValidator } from '../../../services/validation';
+import { useMedications } from '../../../hooks/useMedications';
+import { Medication } from '../../../constants/medicationTypes'; 
 
 interface TimeSlot {
   id: string;
-  time: string;
+  time: string; // Format corrigé: 'HH:MM' (24 heures)
 }
 
+// -------------------------------------------------------------
+// COMPOSANT PRINCIPAL
+// -------------------------------------------------------------
 export default function AddMedicationScreen() {
   const router = useRouter();
+  const { addMedication } = useMedications(); 
+
   const [name, setName] = useState('');
   const [dosage, setDosage] = useState('');
-  const [frequency, setFrequency] = useState('Quotidien');
+  const [frequency, setFrequency] = useState('Une fois par jour');
+  
+
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([
-    { id: '1', time: '08:00' }
+    { id: '1', time: '08:00' }, // 
+    { id: '2', time: '20:00' }  // 
   ]);
-  const [renewalDate, setRenewalDate] = useState<Date | null>(null);
+  
+  const [renewalDate, setRenewalDate] = useState<Date | null>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [notes, setNotes] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
-  // Unités de dosage communes
   const dosageUnits = ['mg', 'g', 'ml', 'μg', 'UI', '%'];
   const [selectedUnit, setSelectedUnit] = useState('mg');
+  const [showUnitSelector, setShowUnitSelector] = useState(false); 
 
-  // Fréquences communes
   const frequencies = [
     'Une fois par jour',
     'Deux fois par jour',
@@ -52,14 +60,16 @@ export default function AddMedicationScreen() {
     'Toutes les 8h',
     'Au besoin',
   ];
-
-  // Ajouter un créneau horaire
+  const reminderOptions = ['5 minutes', '10 minutes', '15 minutes', '30 minutes', '1 heure', 'Aucun'];
+  const [reminderMinutes, setReminderMinutes] = useState('15 minutes'); 
+  const [showFrequencyModal, setShowFrequencyModal] = useState(false);
+  const [showReminderModal, setShowReminderModal] = useState(false);
+  
   const addTimeSlot = () => {
-    const newId = (timeSlots.length + 1).toString();
-    setTimeSlots([...timeSlots, { id: newId, time: '12:00' }]);
+    const newId = (Date.now()).toString(); 
+    setTimeSlots([...timeSlots, { id: newId, time: '12:00' }]); // CORRECTION: 12:00
   };
 
-  // Supprimer un créneau horaire
   const removeTimeSlot = (id: string) => {
     if (timeSlots.length > 1) {
       setTimeSlots(timeSlots.filter(slot => slot.id !== id));
@@ -68,34 +78,69 @@ export default function AddMedicationScreen() {
     }
   };
 
-  // Mettre à jour un créneau horaire
   const updateTimeSlot = (id: string, time: string) => {
     setTimeSlots(timeSlots.map(slot => 
       slot.id === id ? { ...slot, time } : slot
     ));
   };
 
-  // Valider et soumettre le formulaire
+  // Logique de la date corrigée
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS !== 'ios') {
+        setShowDatePicker(false);
+    }
+    if (event.type === 'set' || Platform.OS === 'ios') { 
+        if (selectedDate) {
+            setRenewalDate(selectedDate);
+        }
+    }
+  };
+
+  // CORRECTION: Génération d'horaires en format 24h
+  const handleFrequencySelect = (newFrequency: string) => {
+    setFrequency(newFrequency);
+    setShowFrequencyModal(false); 
+    
+    let newSlots: TimeSlot[];
+    switch (newFrequency) {
+        case 'Une fois par jour':
+            newSlots = [{ id: '1', time: '08:00' }]; 
+            break;
+        case 'Deux fois par jour':
+            newSlots = [
+                { id: '1', time: '08:00' }, 
+                { id: '2', time: '20:00' }, 
+            ];
+            break;
+        case 'Trois fois par jour':
+            newSlots = [
+                { id: '1', time: '08:00' }, 
+                { id: '2', time: '14:00' }, 
+                { id: '3', time: '20:00' }, 
+            ];
+            break;
+        default:
+            newSlots = [{ id: '1', time: '08:00' }]; 
+    }
+    setTimeSlots(newSlots);
+  };
+
   const handleSubmit = async () => {
     try {
       setLoading(true);
       setErrors({});
 
-      // Construire le dosage complet
-      const fullDosage = `${dosage} ${selectedUnit}`;
+      const fullDosage = `${dosage.trim()} ${selectedUnit}`;
 
-      // Préparer les données
-      const medicationData = {
+      const medicationData: Omit<Medication, 'id' | 'status' | 'renewalDaysLeft'> = {
         name: name.trim(),
         dosage: fullDosage,
         frequency,
         timeSlots: timeSlots.map(slot => slot.time),
         renewalDate: renewalDate?.toISOString(),
         notes: notes.trim(),
-        status: 'pending' as const,
       };
 
-      // Valider
       const validation = MedicationValidator.validateMedication(medicationData);
       
       if (!validation.valid) {
@@ -104,8 +149,7 @@ export default function AddMedicationScreen() {
         return;
       }
 
-      // Sauvegarder
-      await MedicationService.addMedication(medicationData);
+      await addMedication(medicationData); 
 
       Alert.alert(
         'Succès',
@@ -119,32 +163,106 @@ export default function AddMedicationScreen() {
       );
     } catch (error) {
       console.error('Erreur ajout médicament:', error);
-      Alert.alert('Erreur', 'Impossible d\'ajouter le médicament');
+      Alert.alert('Erreur', 'Impossible d\'ajouter le médicament. Voir la console pour les détails.');
     } finally {
       setLoading(false);
     }
   };
 
+// ----------------------------------------------------------------
+// COMPOSANT MODAL DE SÉLECTION GÉNÉRIQUE
+// ----------------------------------------------------------------
+const SelectionModal = ({
+    isVisible,
+    onClose,
+    options,
+    selectedValue,
+    onSelect,
+    title,
+}: {
+    isVisible: boolean;
+    onClose: () => void;
+    options: string[];
+    selectedValue: string;
+    onSelect: (value: string) => void;
+    title: string;
+}) => (
+    <Modal
+        visible={isVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={onClose}
+    >
+        <TouchableOpacity style={styles.modalOverlay} onPress={onClose}>
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+                <Text style={styles.modalTitle}>{title}</Text>
+                <ScrollView style={{ maxHeight: 200, width: '100%' }}>
+                    {options.map((option) => (
+                        <TouchableOpacity
+                            key={option}
+                            style={styles.modalOption}
+                            onPress={() => onSelect(option)}
+                        >
+                            <Text style={styles.modalOptionText}>{option}</Text>
+                            {selectedValue === option && (
+                                <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+                            )}
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+                <TouchableOpacity style={styles.modalCloseButton} onPress={onClose}>
+                    <Text style={styles.modalCloseText}>Fermer</Text>
+                </TouchableOpacity>
+            </View>
+        </TouchableOpacity>
+    </Modal>
+);
+
+// ----------------------------------------------------------------
+// RENDER JSX
+// ----------------------------------------------------------------
   return (
     <SafeAreaView style={styles.container}>
+      
+      {/* Modals de sélection */}
+      <SelectionModal
+          isVisible={showFrequencyModal}
+          onClose={() => setShowFrequencyModal(false)}
+          options={frequencies}
+          selectedValue={frequency}
+          onSelect={handleFrequencySelect}
+          title="Sélectionner la Fréquence"
+      />
+
+      <SelectionModal
+          isVisible={showReminderModal}
+          onClose={() => setShowReminderModal(false)}
+          options={reminderOptions}
+          selectedValue={reminderMinutes}
+          onSelect={(value) => {
+              setReminderMinutes(value);
+              setShowReminderModal(false);
+          }}
+          title="Rappel avant la prise"
+      />
+      
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#212121" />
+          <Ionicons name="close" size={24} color="#FFFFFF" /> 
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Ajouter un Médicament</Text>
-        <View style={{ width: 24 }} />
+        <View style={{ width: 24 }} /> 
       </View>
 
       <ScrollView style={styles.content}>
+        
         {/* Nom du médicament */}
         <View style={styles.section}>
-          <Text style={styles.label}>
-            Nom du médicament <Text style={styles.required}>*</Text>
-          </Text>
+          <Text style={styles.label}>Nom du médicament</Text>
           <TextInput
             style={[styles.input, errors.name && styles.inputError]}
-            placeholder="Ex: Aspirine, Metformine"
+            placeholder="Ex: Lisinopril" 
             value={name}
             onChangeText={setName}
             autoCapitalize="words"
@@ -156,122 +274,193 @@ export default function AddMedicationScreen() {
 
         {/* Dosage */}
         <View style={styles.section}>
-          <Text style={styles.label}>
-            Dosage <Text style={styles.required}>*</Text>
-          </Text>
+          <Text style={styles.label}>Dosage</Text>
           <View style={styles.dosageContainer}>
             <TextInput
-              style={[styles.dosageInput, errors.dosage && styles.inputError]}
-              placeholder="500"
+              style={[styles.dosageInputNew, errors.dosage && styles.inputError]} 
+              placeholder="10" 
               value={dosage}
               onChangeText={setDosage}
               keyboardType="numeric"
             />
-            <View style={styles.unitSelector}>
-              {dosageUnits.map(unit => (
-                <TouchableOpacity
-                  key={unit}
-                  style={[
-                    styles.unitButton,
-                    selectedUnit === unit && styles.unitButtonActive,
-                  ]}
-                  onPress={() => setSelectedUnit(unit)}
-                >
-                  <Text
-                    style={[
-                      styles.unitButtonText,
-                      selectedUnit === unit && styles.unitButtonTextActive,
-                    ]}
-                  >
-                    {unit}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            
+            {/* SÉLECTEUR D'UNITÉ : Dropdown stylisé */}
+            <TouchableOpacity
+                style={styles.dosageUnitDropdown} 
+                onPress={() => setShowUnitSelector(prev => !prev)}
+            >
+                <Text style={styles.dosageUnitText}>{selectedUnit}</Text>
+                <Ionicons name={showUnitSelector ? "chevron-up" : "chevron-down"} size={18} color="#212121" />
+            </TouchableOpacity>
           </View>
           {errors.dosage && (
             <Text style={styles.errorText}>{errors.dosage}</Text>
           )}
+
+          {/* SÉLECTEUR D'UNITÉ : affiché conditionnellement */}
+          {showUnitSelector && (
+             <View style={styles.unitSelector}>
+                {dosageUnits.map(unit => (
+                    <TouchableOpacity
+                      key={unit}
+                      style={[
+                        styles.unitButton,
+                        selectedUnit === unit && styles.unitButtonActive,
+                      ]}
+                      onPress={() => {
+                          setSelectedUnit(unit);
+                          setShowUnitSelector(false); 
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.unitButtonText,
+                          selectedUnit === unit && styles.unitButtonTextActive,
+                        ]}
+                      >
+                        {unit}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+             </View>
+          )}
         </View>
 
-        {/* Fréquence */}
+        {/* Fréquence (Ouvre le Modal) */}
         <View style={styles.section}>
           <Text style={styles.label}>Fréquence</Text>
-          <View style={styles.frequencyContainer}>
-            {frequencies.map(freq => (
-              <TouchableOpacity
-                key={freq}
-                style={[
-                  styles.frequencyButton,
-                  frequency === freq && styles.frequencyButtonActive,
-                ]}
-                onPress={() => setFrequency(freq)}
-              >
-                <Text
-                  style={[
-                    styles.frequencyButtonText,
-                    frequency === freq && styles.frequencyButtonTextActive,
-                  ]}
-                >
-                  {freq}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <TouchableOpacity 
+              style={styles.frequencyDropdown}
+              onPress={() => setShowFrequencyModal(true)} 
+          >
+              <Text style={styles.frequencyText}>{frequency}</Text>
+              <Ionicons name="chevron-down" size={20} color="#666" />
+          </TouchableOpacity>
         </View>
 
         {/* Horaires */}
         <View style={styles.section}>
-          <Text style={styles.label}>
-            Horaires de prise <Text style={styles.required}>*</Text>
-          </Text>
-          {timeSlots.map((slot, index) => (
-            <View key={slot.id} style={styles.timeSlotContainer}>
-              <View style={styles.timeSlotNumber}>
-                <Text style={styles.timeSlotNumberText}>{index + 1}</Text>
+          <Text style={styles.label}>Heures de prise</Text>
+          
+          {/* Les deux premiers slots (Mise en page à deux colonnes) */}
+          <View style={styles.timeSlotsRow}>
+            {timeSlots.slice(0, 2).map((slot) => (
+                <View key={slot.id} style={styles.timeInputWrapper}>
+                    {/* CORRECTION: Placeholder et keyboardType ajustés pour HH:MM */}
+                    <TextInput
+                        style={styles.timeInputNew}
+                        placeholder="HH:MM (24h)" 
+                        value={slot.time}
+                        onChangeText={(text) => updateTimeSlot(slot.id, text)}
+                        keyboardType="numeric"
+                        maxLength={5} 
+                    />
+                    <TouchableOpacity style={styles.timeIcon} 
+                        onPress={() => Alert.alert('Sélection d\'heure', `Sélecteur natif pour ${slot.time}`)}>
+                        <Ionicons name="time-outline" size={24} color="#666" />
+                    </TouchableOpacity>
+                </View>
+            ))}
+            {/* Remplir l'espace s'il n'y a qu'un seul slot */}
+            {timeSlots.length === 1 && <View style={{ flex: 1 }}/>}
+          </View>
+
+          {/* Slots additionnels (si plus de 2, en liste verticale) */}
+          {timeSlots.length > 2 && (
+              <View style={{ marginTop: 8 }}>
+                  {timeSlots.slice(2).map((slot) => (
+                      <View key={slot.id} style={styles.timeSlotContainer}>
+                          <View style={styles.timeInputWrapper}>
+                              <TextInput
+                                  style={styles.timeInputNew}
+                                  placeholder="HH:MM (24h)"
+                                  value={slot.time}
+                                  onChangeText={(text) => updateTimeSlot(slot.id, text)}
+                                  keyboardType="numeric"
+                                  maxLength={5}
+                              />
+                              <TouchableOpacity style={styles.timeIcon} 
+                                  onPress={() => Alert.alert('Sélection d\'heure', `Sélecteur natif pour ${slot.time}`)}>
+                                  <Ionicons name="time-outline" size={24} color="#666" />
+                              </TouchableOpacity>
+                          </View>
+                          <TouchableOpacity
+                              style={styles.removeButton}
+                              onPress={() => removeTimeSlot(slot.id)}
+                          >
+                              <Ionicons name="close-circle" size={24} color="#F44336" />
+                          </TouchableOpacity>
+                      </View>
+                  ))}
               </View>
-              <TextInput
-                style={styles.timeInput}
-                placeholder="HH:MM"
-                value={slot.time}
-                onChangeText={(text) => updateTimeSlot(slot.id, text)}
-                keyboardType="numbers-and-punctuation"
-                maxLength={5}
-              />
-              {timeSlots.length > 1 && (
-                <TouchableOpacity
-                  style={styles.removeButton}
-                  onPress={() => removeTimeSlot(slot.id)}
-                >
-                  <Ionicons name="close-circle" size={24} color="#F44336" />
-                </TouchableOpacity>
-              )}
-            </View>
-          ))}
-          <TouchableOpacity style={styles.addTimeButton} onPress={addTimeSlot}>
-            <Ionicons name="add-circle-outline" size={20} color="#4CAF50" />
-            <Text style={styles.addTimeButtonText}>Ajouter un horaire</Text>
-          </TouchableOpacity>
+          )}
+
+          {/* Bouton Ajouter un horaire */}
+          {timeSlots.length < 5 && ( 
+              <TouchableOpacity style={styles.addTimeButton} onPress={addTimeSlot}>
+                  <Ionicons name="add-circle-outline" size={20} color="#4CAF50" />
+                  <Text style={styles.addTimeButtonText}>Ajouter un horaire</Text>
+              </TouchableOpacity>
+          )}
+          
           {errors.timeSlots && (
             <Text style={styles.errorText}>{errors.timeSlots}</Text>
           )}
         </View>
+        
+        {/* Rappel avant (Ouvre le Modal) */}
+        <View style={styles.section}>
+            <Text style={styles.label}>Rappel avant</Text>
+            <TouchableOpacity 
+                style={styles.frequencyDropdown}
+                onPress={() => setShowReminderModal(true)}
+            >
+                <Text style={styles.frequencyText}>{reminderMinutes}</Text>
+                <Ionicons name="chevron-down" size={20} color="#666" />
+            </TouchableOpacity>
+        </View>
 
-        {/* Date de renouvellement */}
+        {/* Instructions / Notes */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Instructions</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Ex: À prendre avec un repas" 
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+          />
+        </View>
+        
+        {/* Date de renouvellement (Date Picker) */}
         <View style={styles.section}>
           <Text style={styles.label}>Date de renouvellement (optionnel)</Text>
           <TouchableOpacity
-            style={styles.dateButton}
+            style={styles.dateButtonNew} 
             onPress={() => setShowDatePicker(true)}
           >
-            <Ionicons name="calendar-outline" size={20} color="#666" />
-            <Text style={styles.dateButtonText}>
+            <Text style={styles.dateButtonTextNew}>
               {renewalDate 
                 ? renewalDate.toLocaleDateString('fr-FR')
                 : 'Sélectionner une date'
               }
             </Text>
+            <Ionicons name="calendar-outline" size={20} color="#666" />
           </TouchableOpacity>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={renewalDate || new Date()}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={onDateChange}
+              minimumDate={new Date()}
+            />
+          )}
+          
+          {/* Option pour effacer la date */}
           {renewalDate && (
             <TouchableOpacity
               style={styles.clearDateButton}
@@ -280,54 +469,20 @@ export default function AddMedicationScreen() {
               <Text style={styles.clearDateText}>Effacer la date</Text>
             </TouchableOpacity>
           )}
-          {showDatePicker && (
-            <DateTimePicker
-              value={renewalDate || new Date()}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={(event, selectedDate) => {
-                setShowDatePicker(Platform.OS === 'ios');
-                if (selectedDate) {
-                  setRenewalDate(selectedDate);
-                }
-              }}
-              minimumDate={new Date()}
-            />
-          )}
           {errors.renewalDate && (
             <Text style={styles.errorText}>{errors.renewalDate}</Text>
           )}
         </View>
 
-        {/* Notes */}
-        <View style={styles.section}>
-          <Text style={styles.label}>Notes (optionnel)</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Instructions spéciales, contre-indications..."
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-          />
-        </View>
-
-        {/* Boutons d'action */}
+        {/* Bouton d'ajout */}
         <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.cancelButtonText}>Annuler</Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.submitButton, loading && styles.submitButtonDisabled]}
             onPress={handleSubmit}
             disabled={loading}
           >
             <Text style={styles.submitButtonText}>
-              {loading ? 'Enregistrement...' : 'Ajouter'}
+              {loading ? 'Enregistrement...' : 'Ajouter le médicament'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -336,6 +491,9 @@ export default function AddMedicationScreen() {
   );
 }
 
+// ----------------------------------------------------------------
+// STYLES
+// ----------------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -346,14 +504,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    backgroundColor: '#4CAF50', // Vert Action / Santé
+    borderBottomWidth: 0, 
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#212121',
+    color: '#FFFFFF',
   },
   content: {
     flex: 1,
@@ -364,12 +521,9 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '400', 
     color: '#212121',
     marginBottom: 8,
-  },
-  required: {
-    color: '#F44336',
   },
   input: {
     backgroundColor: '#FFFFFF',
@@ -378,6 +532,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
+    color: '#212121',
   },
   inputError: {
     borderColor: '#F44336',
@@ -387,21 +542,51 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
+
+  // --- Dosage Styles ---
   dosageContainer: {
-    gap: 12,
+    flexDirection: 'row', 
+    gap: 12, 
+    alignItems: 'center',
   },
-  dosageInput: {
+  dosageInputNew: { 
+    flex: 1, 
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E0E0E0',
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
+    color: '#212121',
+    height: 48,
+  },
+  dosageUnitDropdown: { 
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    width: 80, 
+    height: 48,
+  },
+  dosageUnitText: {
+    fontSize: 16,
+    color: '#212121',
+    fontWeight: '600',
   },
   unitSelector: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+    marginTop: 16, 
+    padding: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
   },
   unitButton: {
     paddingHorizontal: 16,
@@ -423,56 +608,55 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
-  frequencyContainer: {
-    gap: 8,
-  },
-  frequencyButton: {
-    padding: 12,
-    borderRadius: 8,
+
+  // --- Fréquence/Rappel Styles ---
+  frequencyDropdown: { 
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E0E0E0',
+    borderRadius: 8,
+    padding: 12,
+    height: 48,
   },
-  frequencyButtonActive: {
-    backgroundColor: '#E8F5E9',
-    borderColor: '#4CAF50',
+  frequencyText: {
+    fontSize: 16,
+    color: '#212121',
   },
-  frequencyButtonText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
+
+  // --- Horaires Styles ---
+  timeSlotsRow: { 
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 8,
   },
-  frequencyButtonTextActive: {
-    color: '#4CAF50',
-    fontWeight: '600',
-  },
-  timeSlotContainer: {
+  timeSlotContainer: { 
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
     gap: 12,
   },
-  timeSlotNumber: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#4CAF50',
-    justifyContent: 'center',
-    alignItems: 'center',
+  timeInputWrapper: { 
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1,
+      borderColor: '#E0E0E0',
+      borderRadius: 8,
+      paddingRight: 8, 
+      height: 48,
   },
-  timeSlotNumberText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  timeInput: {
+  timeInputNew: { 
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 8,
     padding: 12,
     fontSize: 16,
+    borderWidth: 0, 
+  },
+  timeIcon: {
+    padding: 4,
   },
   removeButton: {
     padding: 4,
@@ -487,25 +671,29 @@ const styles = StyleSheet.create({
     borderColor: '#4CAF50',
     borderStyle: 'dashed',
     gap: 8,
+    marginTop: 16,
   },
   addTimeButtonText: {
     color: '#4CAF50',
     fontSize: 14,
     fontWeight: '600',
   },
-  dateButton: {
+  
+  // --- Date Styles ---
+  dateButtonNew: { 
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E0E0E0',
     borderRadius: 8,
     padding: 12,
-    gap: 12,
+    height: 48,
   },
-  dateButtonText: {
+  dateButtonTextNew: {
     fontSize: 16,
-    color: '#666',
+    color: '#212121', 
   },
   clearDateButton: {
     marginTop: 8,
@@ -515,32 +703,17 @@ const styles = StyleSheet.create({
     color: '#F44336',
     fontSize: 14,
   },
+  
+  // --- Autres ---
   textArea: {
     height: 100,
     paddingTop: 12,
   },
   buttonContainer: {
-    flexDirection: 'row',
-    gap: 12,
     marginTop: 24,
     marginBottom: 32,
   },
-  cancelButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#666',
-  },
   submitButton: {
-    flex: 1,
     padding: 16,
     borderRadius: 8,
     backgroundColor: '#4CAF50',
@@ -553,5 +726,49 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  
+  // --- Styles Modal ---
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 15,
+    color: '#212121',
+  },
+  modalOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalOptionText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  modalCloseButton: {
+    marginTop: 20,
+    padding: 10,
+  },
+  modalCloseText: {
+    color: '#F44336',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

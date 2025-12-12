@@ -1,10 +1,6 @@
-// ============================================
-// HOOK PERSONNALISÉ
-// ============================================
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Medication, WeeklyObservance } from '../constants/medicationTypes';
-import { MedicationService } from '../services/medicationService'
+import { MedicationService } from '../services/medicationService';
 import { NotificationService } from '../services/notificationService';
 
 export const useMedications = () => {
@@ -13,8 +9,9 @@ export const useMedications = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Charger les médicaments
-  const loadMedications = async () => {
+  // ---- Functions stabilisées ----
+
+  const loadMedications = useCallback(async () => {
     try {
       setLoading(true);
       const data = await MedicationService.getAllMedications();
@@ -26,66 +23,72 @@ export const useMedications = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Charger l'observance hebdomadaire
-  const loadWeeklyObservance = async () => {
+  const loadWeeklyObservance = useCallback(async () => {
     try {
       const data = await MedicationService.getWeeklyObservance();
       setWeeklyObservance(data);
     } catch (err) {
       console.error('Erreur chargement observance:', err);
     }
-  };
+  }, []);
 
-  // Ajouter un médicament
-  const addMedication = async (medication: Omit<Medication, 'id'>) => {
+  const refresh = useCallback(async () => {
+    await loadMedications();
+    await loadWeeklyObservance();
+  }, [loadMedications, loadWeeklyObservance]);
+
+  // ---- Actions ----
+
+  const addMedication = async (medication: Omit<Medication, 'id' | 'status' | 'renewalDaysLeft'>) => {
     try {
       await MedicationService.addMedication(medication);
-      await loadMedications();
+      await refresh();
     } catch (err) {
-      setError('Erreur lors de l\'ajout du médicament');
+      setError("Erreur lors de l'ajout du médicament");
       throw err;
     }
   };
 
-  // Marquer comme pris
   const markAsTaken = async (id: string) => {
     try {
       await MedicationService.markAsTaken(id);
-      await loadMedications();
-      await loadWeeklyObservance();
+      await refresh();
     } catch (err) {
       setError('Erreur lors du marquage');
       throw err;
     }
   };
 
-  // Supprimer un médicament
+  const cancelTake = async (id: string) => {
+    try {
+      await MedicationService.recordObservance(id, new Date(), false);
+      await refresh();
+    } catch (err) {
+      setError("Erreur lors de l'annulation");
+      throw err;
+    }
+  };
+
   const deleteMedication = async (id: string) => {
     try {
       await MedicationService.deleteMedication(id);
-      await loadMedications();
+      await refresh();
     } catch (err) {
       setError('Erreur lors de la suppression');
       throw err;
     }
   };
 
-  // Initialiser les permissions de notification
-  const initializeNotifications = async () => {
-    try {
-      await NotificationService.requestPermissions();
-    } catch (err) {
-      console.error('Permissions notification refusées:', err);
-    }
-  };
+  // ---- Init ----
 
   useEffect(() => {
-    initializeNotifications();
-    loadMedications();
-    loadWeeklyObservance();
-  }, []);
+    (async () => {
+      await NotificationService.requestPermissions();
+      await refresh();
+    })();
+  }, [refresh]);
 
   return {
     medications,
@@ -94,10 +97,8 @@ export const useMedications = () => {
     error,
     addMedication,
     markAsTaken,
+    cancelTake,
     deleteMedication,
-    refresh: () => {
-      loadMedications();
-      loadWeeklyObservance();
-    },
+    refresh,
   };
 };
