@@ -30,6 +30,8 @@ const MAPPING = {
   'info.circle': 'info-outline',
   'drop': 'water-drop',
   'wind': 'air',
+  'plus': 'add',
+  'xmark': 'close',
 } as IconMapping;
 
 /**
