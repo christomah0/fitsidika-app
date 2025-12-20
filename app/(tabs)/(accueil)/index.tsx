@@ -122,10 +122,10 @@ export default function AccueilScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F9FAFB',
   },
   container: {
-    padding: 15,
+    padding: 16,
     paddingTop: 10,
   },
   alertBox: {

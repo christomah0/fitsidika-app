@@ -53,6 +53,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="init-splash" options={{ headerShown: false }} />
+          <Stack.Screen name="(doctor)" options={{ headerShown: false }} />
         </Stack>
       </SafeAreaProvider>
       <StatusBar style="auto" />

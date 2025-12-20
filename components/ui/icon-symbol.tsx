@@ -32,6 +32,9 @@ const MAPPING = {
   'wind': 'air',
   'plus': 'add',
   'xmark': 'close',
+  'chevron.left': 'chevron-left',
+  'exclamationmark.triangle.fill': 'report-problem',
+  'magnifyingglass': 'search',
 } as IconMapping;
 
 /**

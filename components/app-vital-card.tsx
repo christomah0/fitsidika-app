@@ -31,8 +31,8 @@ const AppVitaCard: React.FC<AppVitalCardProps> = ({ icon, label, value, status, 
 const styles = StyleSheet.create({
   card: {
     width: '48%',
-    padding: 15,
-    borderRadius: 15,
+    padding: 16,
+    borderRadius: 16,
     marginBottom: 10,
     minHeight: 120,
     justifyContent: 'space-between',

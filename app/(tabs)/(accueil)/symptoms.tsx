@@ -228,7 +228,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24
   },
-  headerTitle: { fontWeight: '700', fontSize: 18 },
+  headerTitle: { 
+    fontWeight: '700', 
+    fontSize: 18 
+  },
   closeBtn: { backgroundColor: '#F0F0F0', padding: 8, borderRadius: 20 },
   label: { fontSize: 15, color: '#4A5568', marginBottom: 12, fontWeight: '500' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 },
