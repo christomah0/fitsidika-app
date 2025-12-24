@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { IconSymbol } from './ui/icon-symbol';
+import { useAuth } from '@/hooks/use-auth';
 
 interface AppDoctorTopBarProps {
     userName: string;
@@ -18,11 +19,12 @@ export function AppDoctorTopBar({
 }: AppDoctorTopBarProps) {
     const insets = useSafeAreaInsets();
     const colorScheme = useColorScheme() ?? 'light';
+    const { logout } = useAuth();
 
-    // Cleaned up color logic: Primary theme color with a fallback
-    const headerBg = Colors[colorScheme ?? 'light'].tint.includes('#fff') ? Colors.dark.background : Colors[colorScheme ?? 'light'].tint;
+    const headerBg = Colors[colorScheme].tint.includes('#fff')
+        ? Colors.dark.background
+        : Colors[colorScheme].tint;
 
-    // Extract initials for avatar
     const initials = userName
         .split(' ')
         .map(n => n[0])
@@ -30,30 +32,57 @@ export function AppDoctorTopBar({
         .toUpperCase()
         .slice(0, 2);
 
+    const handleLogout = () => {
+        Alert.alert(
+            "Déconnexion",
+            "Voulez-vous vraiment vous déconnecter ?",
+            [
+                { text: "Annuler", style: "cancel" },
+                {
+                    text: "Se déconnecter",
+                    style: "destructive",
+                    onPress: () => logout()
+                }
+            ]
+        );
+    };
+
     return (
         <View style={{ paddingTop: insets.top, backgroundColor: headerBg }}>
             <View style={styles.wrapper}>
-                {/* Top Row: Logo & Notifications */}
+                {/* Top Row: Logo & Actions */}
                 <View style={styles.topRow}>
-                    <View style={styles.leftSpacer} />
+                    <View style={styles.leftActions}>
+                        {/* Empty spacer to keep branding centered, or place a menu icon here */}
+                    </View>
 
                     <View style={styles.brand}>
                         <IconSymbol name="heart" size={28} color="white" />
                         <Text style={styles.brandText}>FitsidikaApp</Text>
                     </View>
 
-                    <TouchableOpacity
-                        onPress={onNotificationsPress}
-                        style={styles.iconButton}
-                        activeOpacity={0.7}
-                    >
-                        <IconSymbol name="bell" size={28} color="white" />
-                        {notificationsCount > 0 && (
-                            <View style={styles.badge}>
-                                <Text style={styles.badgeText}>{notificationsCount}</Text>
-                            </View>
-                        )}
-                    </TouchableOpacity>
+                    <View style={styles.rightActions}>
+                        <TouchableOpacity
+                            onPress={onNotificationsPress}
+                            style={styles.iconButton}
+                            activeOpacity={0.7}
+                        >
+                            <IconSymbol name="bell" size={28} color="white" />
+                            {notificationsCount > 0 && (
+                                <View style={styles.badge}>
+                                    <Text style={styles.badgeText}>{notificationsCount}</Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={handleLogout}
+                            style={styles.iconButton}
+                            activeOpacity={0.7}
+                        >
+                            <IconSymbol name="rectangle.portrait.and.arrow.right" size={28} color="white" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {/* Bottom Row: User Profile */}
@@ -74,9 +103,7 @@ export function AppDoctorTopBar({
 const styles = StyleSheet.create({
     wrapper: {
         ...Platform.select({
-            android: {
-                elevation: 2,
-            },
+            android: { elevation: 2 },
             ios: {
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 2 },
@@ -92,13 +119,25 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingHorizontal: 16,
     },
-    leftSpacer: {
-        width: 44,
+    leftActions: {
+        width: 100,
+    },
+    rightActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        width: 100,
+        justifyContent: 'flex-end',
     },
     brand: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        justifyContent: 'center',
+        zIndex: -1
     },
     brandText: {
         fontSize: 20,
@@ -107,8 +146,8 @@ const styles = StyleSheet.create({
         letterSpacing: -0.5,
     },
     iconButton: {
-        width: 44,
-        height: 44,
+        width: 42,
+        height: 42,
         borderRadius: 12,
         backgroundColor: 'rgba(255, 255, 255, 0.15)',
         justifyContent: 'center',
@@ -116,16 +155,16 @@ const styles = StyleSheet.create({
     },
     badge: {
         position: 'absolute',
-        top: -4,
-        right: -4,
-        backgroundColor: '#EF4444', // Modern red (Tailwind Red 500)
+        top: -2,
+        right: -2,
+        backgroundColor: '#EF4444',
         minWidth: 18,
         height: 18,
         borderRadius: 9,
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 2,
-        borderColor: 'transparent', // Can change to headerBg if you want an outline
+        borderWidth: 1.5,
+        borderColor: '#EF4444',
     },
     badgeText: {
         color: 'white',

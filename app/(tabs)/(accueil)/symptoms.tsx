@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { 
-  StyleSheet, 
-  ScrollView, 
-  TouchableOpacity, 
-  View, 
-  Modal, 
-  TextInput, 
-  KeyboardAvoidingView, 
+import {
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  View,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
@@ -16,6 +16,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { SymptomSelector } from '@/components/symptom-selector';
 import { GuideBox } from '@/components/guide-box';
 import { HistoryCard } from '@/components/history-card';
+import { Colors } from '@/constants/theme';
 
 const SYMPTOMS = [
   { id: '1', label: 'Maux de tête', icon: '🤕' },
@@ -51,13 +52,13 @@ export default function SymptomsScreen() {
   return (
     <ThemedView style={{ flex: 1 }}>
       <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
-        {/* Bouton d'ajout principal */}
+        {/* Main Action Button */}
         <TouchableOpacity style={styles.mainAddBtn} onPress={() => setModalVisible(true)}>
           <IconSymbol name='plus' color="white" size={20} />
           <ThemedText style={styles.whiteBtnText}>Nouveau Symptôme</ThemedText>
         </TouchableOpacity>
 
-        {/* Card Historique avec Shadow */}
+        {/* History Card */}
         <View style={styles.card}>
           <ThemedText type="defaultSemiBold" style={{ marginBottom: 12 }}>Dernier relevé</ThemedText>
           <HistoryCard
@@ -68,7 +69,7 @@ export default function SymptomsScreen() {
           />
         </View>
 
-        {/* Card Guide avec Shadow */}
+        {/* Guide Card */}
         <View style={styles.card}>
           <ThemedText type="defaultSemiBold" style={{ marginBottom: 16 }}>
             Guide de l'Échelle
@@ -79,15 +80,15 @@ export default function SymptomsScreen() {
         </View>
       </ScrollView>
 
-      {/* MODAL / BOTTOM SHEET SYNCHRONISÉE AU CLAVIER */}
-      <Modal visible={modalVisible} animationType="slide" transparent>
+      {/* MODAL */}
+      <Modal visible={modalVisible} animationType="slide" transparent statusBarTranslucent>
         <View style={styles.overlay}>
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.modalContentWrapper}
           >
             <View style={styles.modalBody}>
-              {/* Header fixe */}
+              {/* HEADER WITH SEPARATOR */}
               <View style={styles.modalHeader}>
                 <ThemedText type="subtitle" style={styles.headerTitle}>Enregistrer un Symptôme</ThemedText>
                 <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeBtn}>
@@ -95,11 +96,11 @@ export default function SymptomsScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Contenu scrollable */}
-              <ScrollView 
-                showsVerticalScrollIndicator={false} 
+              {/* SCROLLABLE CONTENT */}
+              <ScrollView
+                showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ paddingBottom: 20 }}
+                contentContainerStyle={styles.scrollContainer}
               >
                 <ThemedText style={styles.label}>Sélectionner un Symptôme</ThemedText>
                 <View style={styles.grid}>
@@ -160,7 +161,7 @@ export default function SymptomsScreen() {
                 />
               </ScrollView>
 
-              {/* Footer avec Bouton (Poussé par le clavier) */}
+              {/* FOOTER */}
               <View style={styles.footer}>
                 <TouchableOpacity
                   style={[styles.saveBtn, !selectedSymptom && { opacity: 0.5 }]}
@@ -179,8 +180,9 @@ export default function SymptomsScreen() {
 }
 
 const styles = StyleSheet.create({
+  // --- Main Screen Styles ---
   mainAddBtn: {
-    backgroundColor: '#00B341',
+    backgroundColor: Colors.light.tint,
     flexDirection: 'row',
     padding: 16,
     borderRadius: 12,
@@ -205,6 +207,8 @@ const styles = StyleSheet.create({
     }),
   },
   whiteBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+
+  // --- Modal Specific Styles ---
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -219,28 +223,75 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
-    paddingHorizontal: 20,
-    paddingTop: 20,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0', // The Separator
   },
   headerTitle: { 
     fontWeight: '700', 
-    fontSize: 18 
+    fontSize: 20, 
+    color: '#1e293b' 
   },
-  closeBtn: { backgroundColor: '#F0F0F0', padding: 8, borderRadius: 20 },
-  label: { fontSize: 15, color: '#4A5568', marginBottom: 12, fontWeight: '500' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 },
-  slider: { width: '100%', height: 40 },
-  severityStatusRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  statusText: { fontSize: 14, fontWeight: '600' },
-  numberRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 },
-  numBox: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#F0F4F8', justifyContent: 'center', alignItems: 'center' },
-  numLabel: { fontSize: 12, fontWeight: '700', color: '#718096' },
+  closeBtn: { 
+    backgroundColor: '#F0F0F0', 
+    padding: 8, 
+    borderRadius: 20 
+  },
+  scrollContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 20 
+  },
+  label: { 
+    fontSize: 15, 
+    color: '#4A5568', 
+    marginBottom: 12, 
+    fontWeight: '500' 
+  },
+  grid: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    justifyContent: 'space-between', 
+    marginBottom: 10 
+  },
+  slider: { 
+    width: '100%', 
+    height: 40 
+  },
+  severityStatusRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    marginBottom: 8 
+  },
+  statusText: { 
+    fontSize: 14, 
+    fontWeight: '600' 
+  },
+  numberRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    marginTop: 5 
+  },
+  numBox: { 
+    width: 32, 
+    height: 32, 
+    borderRadius: 8, 
+    backgroundColor: '#F0F4F8', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  numLabel: { 
+    fontSize: 12, 
+    fontWeight: '700', 
+    color: '#718096' 
+  },
   textArea: {
     borderWidth: 1,
     borderColor: '#E2E8F0',
@@ -253,12 +304,22 @@ const styles = StyleSheet.create({
     marginBottom: 10
   },
   footer: {
+    paddingHorizontal: 20,
     paddingVertical: 12,
     backgroundColor: 'white',
     borderTopWidth: 1,
     borderTopColor: '#F0F0F0',
-    paddingBottom: Platform.OS === 'ios' ? 34 : 15 
+    paddingBottom: Platform.OS === 'ios' ? 34 : 15
   },
-  saveBtn: { backgroundColor: '#00B341', padding: 18, borderRadius: 14, alignItems: 'center' },
-  saveBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 }
+  saveBtn: { 
+    backgroundColor: Colors.light.tint, 
+    padding: 18, 
+    borderRadius: 14, 
+    alignItems: 'center' 
+  },
+  saveBtnText: { 
+    color: 'white', 
+    fontWeight: 'bold', 
+    fontSize: 16 
+  }
 });

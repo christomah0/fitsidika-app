@@ -1,3 +1,5 @@
+import React, { useState, useMemo, useEffect } from 'react';
+
 import AddPatientModal from '@/components/add-patient-modal';
 import { AlertItem, AlertsBox } from '@/components/alerts-box';
 import DoctorSummaryCard from '@/components/doctor-summary-card';
@@ -5,15 +7,18 @@ import PatientCard from '@/components/patient-card';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
-import React, { useState, useMemo } from 'react';
+import { createPatient } from '@/services/firebase/firestoreServices';
+import { PatientFormData } from '@/types/patient.type';
+import { useRouter } from 'expo-router';
+import { FlatList } from 'react-native';
 import {
     StyleSheet,
     View,
     Text,
-    ScrollView,
     TextInput,
     TouchableOpacity
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 
 interface Patient {
     id: string;
@@ -23,15 +28,17 @@ interface Patient {
     bp: string;
     sugar: number;
     heartRate: number;
-    accessActive: boolean;
+    accessStatus: boolean;
     lastUpdate: string;
 }
 
 export default function HomeScreen() {
     const [modalVisible, setModalVisible] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const router = useRouter();
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const [patients] = useState<Patient[]>([
+    const [patients, setPatients] = useState<Patient[]>([
         {
             id: '1',
             name: "Marie Dubois",
@@ -40,7 +47,7 @@ export default function HomeScreen() {
             bp: "142/95",
             sugar: 158,
             heartRate: 88,
-            accessActive: false,
+            accessStatus: false,
             lastUpdate: "15 min"
         },
         {
@@ -51,7 +58,7 @@ export default function HomeScreen() {
             bp: "135/88",
             sugar: 110,
             heartRate: 76,
-            accessActive: true,
+            accessStatus: true,
             lastUpdate: "1 h"
         },
         {
@@ -62,7 +69,7 @@ export default function HomeScreen() {
             bp: "118/76",
             sugar: 92,
             heartRate: 68,
-            accessActive: true,
+            accessStatus: true,
             lastUpdate: "2 h"
         },
         {
@@ -73,7 +80,7 @@ export default function HomeScreen() {
             bp: "125/82",
             sugar: 98,
             heartRate: 72,
-            accessActive: false,
+            accessStatus: false,
             lastUpdate: "5 h"
         }
     ]);
@@ -83,11 +90,68 @@ export default function HomeScreen() {
         { id: 'warn-1', count: 1, label: 'Patient à surveiller', type: 'warning' },
     ];
 
+    // Filter patients based on search query
     const filteredPatients = useMemo(() => {
         return patients.filter((p) =>
             p.name.toLowerCase().includes(searchQuery.toLowerCase())
         );
     }, [searchQuery, patients]);
+
+    // Header component for the patient list
+    const ListHeader = () => (
+        <>
+            <AlertsBox alerts={MOCK_ALERTS} />
+            <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Mes Patients</Text>
+            </View>
+        </>
+    );
+
+    // Render function for each patient item
+    const renderItem = ({ item }: { item: Patient }) => (
+        <PatientCard
+            {...item}
+            onAccessChange={(newValue) => toggleAccess(item.id, newValue)}
+            onDetailsPress={() => router.push(`/patients/details/${item.id}`)}
+        />
+    );
+
+    // Handle adding a new patient
+    async function handleAddPatient(formData: PatientFormData) {
+        setIsSubmitting(true);
+        try {
+            // Call the createPatient function with a mock doctor ID and form data
+            await createPatient('9CZZD4d5kb44jPncA9Gt', formData);
+
+            Toast.show({
+                type: 'success',
+                text1: 'Succès',
+                text2: 'Patient ajouté avec succès !',
+                position: 'bottom'
+            });
+
+            setModalVisible(false);
+        } catch (err) {
+            Toast.show({
+                type: 'error',
+                text1: 'Erreur',
+                text2: 'Échec de la création du patient.',
+                position: 'bottom'
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    }
+
+    // Handle the switch toggle
+    const toggleAccess = (id: string, newValue: boolean) => {
+        setPatients(prevPatients =>
+            prevPatients.map(p =>
+                p.id === id ? { ...p, accessStatus: newValue } : p
+            )
+        );
+        console.log(`Patient ${id} access updated to: ${newValue}`);
+    };
 
     return (
         <ThemedView style={styles.container}>
@@ -108,28 +172,27 @@ export default function HomeScreen() {
                 />
             </View>
 
-            <ScrollView
+            <FlatList
+                data={filteredPatients}
+                keyExtractor={(item) => item.id}
+                renderItem={renderItem}
+                ListHeaderComponent={ListHeader}
+                ListEmptyComponent={<Text style={styles.emptyState}>Aucun patient trouvé</Text>}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
-            >
-                <AlertsBox alerts={MOCK_ALERTS} />
-
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Mes Patients</Text>
-                </View>
-
-                {filteredPatients.map((p) => <PatientCard key={p.id} {...p} />)}
-
-                {filteredPatients.length === 0 && (
-                    <Text style={styles.emptyState}>Aucun patient trouvé</Text>
-                )}
-            </ScrollView>
+                removeClippedSubviews={true}
+            />
 
             <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
                 <IconSymbol name="plus" size={28} color="white" />
             </TouchableOpacity>
 
-            <AddPatientModal visible={modalVisible} onClose={() => setModalVisible(false)} />
+            <AddPatientModal
+                visible={modalVisible}
+                loading={isSubmitting}
+                onClose={() => setModalVisible(false)}
+                onSubmit={handleAddPatient}
+            />
         </ThemedView>
     );
 }
@@ -139,7 +202,7 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#F9FAFB',
         paddingTop: 10,
-        paddingHorizontal: 16,
+        paddingHorizontal: 20,
     },
     scrollContent: {
         paddingBottom: 100

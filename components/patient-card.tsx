@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Switch, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Image, Switch, TouchableOpacity, Platform } from 'react-native';
 import { IconSymbol } from './ui/icon-symbol';
 
 interface PatientProps {
@@ -9,19 +9,32 @@ interface PatientProps {
     bp: string;
     sugar: number;
     heartRate: number;
-    accessActive: boolean;
+    accessStatus: boolean;
     lastUpdate: string;
+    onAccessChange?: (value: boolean) => void;
+    onDetailsPress?: () => void;
 }
 
-const PatientCard = ({ name, age, status, bp, sugar, heartRate, accessActive, lastUpdate }: PatientProps) => {
-    const statusColor = status === 'Critique' ? '#FFEDED' : status === 'Attention' ? '#FFF9E6' : '#FFFFFF';
+const PatientCard = ({
+    name,
+    age,
+    status,
+    bp,
+    sugar,
+    heartRate,
+    accessStatus,
+    lastUpdate,
+    onAccessChange,
+    onDetailsPress
+}: PatientProps) => {
     const tagColor = status === 'Critique' ? '#FEE2E2' : status === 'Attention' ? '#FEF3C7' : '#DCFCE7';
     const textColor = status === 'Critique' ? '#991B1B' : status === 'Attention' ? '#92400E' : '#166534';
 
     return (
-        <View style={[styles.card, { backgroundColor: statusColor, borderColor: tagColor, borderWidth: 1 }]}>
+        <View style={[styles.card, { backgroundColor: '#FFFFFF' }]}>
             <View style={styles.cardHeader}>
-                <Image source={{ uri: 'https://via.placeholder.com/50' }} style={styles.avatar} />
+                <Image source={{ uri: 'https://via.placeholder.com/60' }} style={styles.avatar} />
+
                 <View style={styles.infoContainer}>
                     <View style={styles.nameRow}>
                         <Text style={styles.patientName}>{name}</Text>
@@ -29,34 +42,53 @@ const PatientCard = ({ name, age, status, bp, sugar, heartRate, accessActive, la
                             <Text style={[styles.tagText, { color: textColor }]}>{status}</Text>
                         </View>
                     </View>
+
                     <Text style={styles.ageText}>{age} ans</Text>
 
                     <View style={styles.vitalsRow}>
                         <View style={styles.vitalItem}>
-                            <IconSymbol name="heart" size={16} color="#666" />
+                            <IconSymbol name="heart.fill" size={14} color="#6B7280" />
                             <Text style={styles.vitalText}>{bp}</Text>
                         </View>
                         <View style={styles.vitalItem}>
-                            <IconSymbol name="drop" size={16} color="#666" />
-                            <Text style={styles.vitalText}>{sugar}</Text>
+                            <IconSymbol name="drop.fill" size={14} color="#6B7280" />
+                            <Text style={styles.vitalText}>{sugar} g/L</Text>
                         </View>
                         <View style={styles.vitalItem}>
-                            <IconSymbol name="waveform.path.ecg" size={16} color="#666" />
-                            <Text style={styles.vitalText}>{heartRate}</Text>
+                            <IconSymbol name="waveform.path.ecg" size={14} color="#6B7280" />
+                            <Text style={styles.vitalText}>{heartRate} bpm</Text>
                         </View>
                     </View>
 
                     <View style={styles.footer}>
+                        {/* ACCESS STATUS SECTION */}
                         <View style={styles.switchRow}>
-                            <Switch value={accessActive} trackColor={{ true: '#10B981' }} />
-                            <Text style={styles.accessText}>Accès actif</Text>
+                            <Switch
+                                value={accessStatus}
+                                onValueChange={onAccessChange}
+                                trackColor={{ false: '#D1D5DB', true: '#10B981' }}
+                                thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'}
+                                ios_backgroundColor="#D1D5DB"
+                                style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                            />
+                            <Text style={[
+                                styles.accessText,
+                                { color: accessStatus ? '#059669' : '#6B7280', fontWeight: accessStatus ? '600' : '400' }
+                            ]}>
+                                {accessStatus ? 'Accès actif' : 'Accès coupé'}
+                            </Text>
                         </View>
-                        <TouchableOpacity style={styles.detailsBtn}>
-                            <Text style={styles.detailsText}>Voir détails</Text>
-                            <IconSymbol name="chevron.right" size={20} color="#10B981" />
+
+                        <TouchableOpacity style={styles.detailsBtn} onPress={onDetailsPress}>
+                            <Text style={styles.detailsText}>Détails</Text>
+                            <IconSymbol name="chevron.right" size={16} color="#10B981" />
                         </TouchableOpacity>
                     </View>
-                    <Text style={styles.timeText}>Il y a {lastUpdate}</Text>
+
+                    <View style={styles.timeRow}>
+                        <IconSymbol name="clock" size={12} color="#9CA3AF" />
+                        <Text style={styles.timeText}>Mise à jour il y a {lastUpdate}</Text>
+                    </View>
                 </View>
             </View>
         </View>
@@ -65,18 +97,20 @@ const PatientCard = ({ name, age, status, bp, sugar, heartRate, accessActive, la
 
 const styles = StyleSheet.create({
     card: {
-        borderRadius: 16,
+        borderRadius: 20,
         padding: 16,
-        marginBottom: 12,
+        marginBottom: 16,
+        backgroundColor: 'white',
     },
     cardHeader: {
         flexDirection: 'row'
     },
     avatar: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        marginRight: 12
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        marginRight: 14,
+        backgroundColor: '#F3F4F6'
     },
     infoContainer: {
         flex: 1
@@ -87,64 +121,82 @@ const styles = StyleSheet.create({
         alignItems: 'center'
     },
     patientName: {
-        fontSize: 18,
+        fontSize: 17,
         fontWeight: '700',
-        color: '#1F2937'
+        color: '#111827'
     },
     tag: {
         paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 6
+        paddingVertical: 4,
+        borderRadius: 8
     },
     tagText: {
-        fontSize: 12,
-        fontWeight: '600'
+        fontSize: 11,
+        fontWeight: '700',
+        textTransform: 'uppercase'
     },
     ageText: {
         color: '#6B7280',
-        marginVertical: 4
+        fontSize: 14,
+        marginTop: 2
     },
     vitalsRow: {
         flexDirection: 'row',
-        gap: 15,
-        marginVertical: 8
+        gap: 12,
+        marginTop: 12,
+        marginBottom: 8
     },
     vitalItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4
+        gap: 4,
+        backgroundColor: 'rgba(255,255,255,0.5)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6
     },
     vitalText: {
         color: '#374151',
-        fontWeight: '500'
+        fontWeight: '600',
+        fontSize: 13
     },
     footer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: 10
+        marginTop: 12,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(0,0,0,0.05)'
     },
     switchRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8
+        marginLeft: -8 // Compensate for switch margin
     },
     accessText: {
-        fontSize: 14,
-        color: '#374151'
+        fontSize: 13,
+        marginLeft: 4
     },
     detailsBtn: {
         flexDirection: 'row',
-        alignItems: 'center'
+        alignItems: 'center',
+        gap: 2
     },
     detailsText: {
         color: '#10B981',
-        fontWeight: '600'
+        fontWeight: '700',
+        fontSize: 14
+    },
+    timeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        marginTop: 10
     },
     timeText: {
-        fontSize: 12,
+        fontSize: 11,
         color: '#9CA3AF',
-        marginTop: 8
     }
 });
 

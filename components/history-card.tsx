@@ -36,18 +36,6 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         padding: 16,
         marginBottom: 16,
-
-        ...Platform.select({
-            android: {
-                elevation: 2,
-            },
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.1,
-                shadowRadius: 4,
-            },
-        }),
     },
     cardHeader: {
         flexDirection: 'row',

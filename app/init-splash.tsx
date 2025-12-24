@@ -4,7 +4,7 @@ import { StyleSheet, StatusBar, View, Image, Platform } from "react-native";
 import AppThreeDotsLoading from "@/components/app-three-dots-loading";
 import { Colors } from "@/constants/theme";
 
-const ICON_PATH = require('@/assets/images/heart-logo.png');
+const ICON_PATH = require('@/assets/images/splash-icon.png');
 const SPLASH_BG_COLOR = Colors.light.tint
 
 export default function InitSplashScreen() {

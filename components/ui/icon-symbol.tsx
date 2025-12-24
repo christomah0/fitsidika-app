@@ -35,6 +35,8 @@ const MAPPING = {
   'chevron.left': 'chevron-left',
   'exclamationmark.triangle.fill': 'report-problem',
   'magnifyingglass': 'search',
+  'clock.arrow.circlepath': 'history',
+  'rectangle.portrait.and.arrow.right': 'logout',
 } as IconMapping;
 
 /**
