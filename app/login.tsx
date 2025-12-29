@@ -65,7 +65,7 @@ export default function LoginScreen() {
 
             <View style={styles.inputGroup}>
               <View style={styles.labelRow}>
-                <IconSymbol name="envelope" size={18} color="#2e7d32" />
+                <IconSymbol name="envelope" size={18} color={Colors.light.tint} />
                 <Text style={styles.label}>Adresse email</Text>
               </View>
               <TextInput

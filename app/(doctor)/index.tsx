@@ -7,7 +7,7 @@ import PatientCard from '@/components/patient-card';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
-import { createPatient } from '@/services/firebase/firestoreServices';
+import { countPatientsByDoctorId, createPatient, getDoctorById, getPatientsOverviewState, getPatientStatusCounts, updateUserAccessStatus } from '@/services/firebase/firestoreServices';
 import { PatientFormData } from '@/types/patient.type';
 import { useRouter } from 'expo-router';
 import { FlatList } from 'react-native';
@@ -19,76 +19,20 @@ import {
     TouchableOpacity
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-
-interface Patient {
-    id: string;
-    name: string;
-    age: number;
-    status: 'Critique' | 'Attention' | 'Normal';
-    bp: string;
-    sugar: number;
-    heartRate: number;
-    accessStatus: boolean;
-    lastUpdate: string;
-}
+import { useAuth } from '@/hooks/use-auth';
+import { DoctorBase } from '@/types/doctor.type';
+import { PatientOverview } from '@/types/patient-overview';
 
 export default function HomeScreen() {
     const [modalVisible, setModalVisible] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const router = useRouter();
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const [patients, setPatients] = useState<Patient[]>([
-        {
-            id: '1',
-            name: "Marie Dubois",
-            age: 68,
-            status: "Critique",
-            bp: "142/95",
-            sugar: 158,
-            heartRate: 88,
-            accessStatus: false,
-            lastUpdate: "15 min"
-        },
-        {
-            id: '2',
-            name: "Jean Martin",
-            age: 55,
-            status: "Attention",
-            bp: "135/88",
-            sugar: 110,
-            heartRate: 76,
-            accessStatus: true,
-            lastUpdate: "1 h"
-        },
-        {
-            id: '3',
-            name: "Sophie Laurent",
-            age: 42,
-            status: "Normal",
-            bp: "118/76",
-            sugar: 92,
-            heartRate: 68,
-            accessStatus: true,
-            lastUpdate: "2 h"
-        },
-        {
-            id: '4',
-            name: "Pierre Lefebvre",
-            age: 71,
-            status: "Normal",
-            bp: "125/82",
-            sugar: 98,
-            heartRate: 72,
-            accessStatus: false,
-            lastUpdate: "5 h"
-        }
-    ]);
-
-    const MOCK_ALERTS: AlertItem[] = [
-        { id: 'crit-1', count: 1, label: 'Patient avec vitaux critiques', type: 'critical' },
-        { id: 'warn-1', count: 1, label: 'Patient à surveiller', type: 'warning' },
-    ];
+    const { user } = useAuth();
+    const [doctor, setDoctor] = useState<DoctorBase | null>(null);
+    const [patientCount, setPatientCount] = useState<number>(0);
+    const [patients, setPatients] = useState<PatientOverview[]>([]);
+    const [stats, setStats] = useState({ Critique: 0, Attention: 0, Normal: 0 });
 
     // Filter patients based on search query
     const filteredPatients = useMemo(() => {
@@ -97,10 +41,34 @@ export default function HomeScreen() {
         );
     }, [searchQuery, patients]);
 
+    const activeAlerts: AlertItem[] = useMemo(() => {
+        const alerts: AlertItem[] = [];
+
+        if (stats.Critique > 0) {
+            alerts.push({
+                id: 'crit-count',
+                count: stats.Critique,
+                label: stats.Critique > 1 ? 'Patients avec vitaux critiques' : 'Patient avec vitaux critiques',
+                type: 'critical',
+            });
+        }
+
+        if (stats.Attention > 0) {
+            alerts.push({
+                id: 'warn-count',
+                count: stats.Attention,
+                label: stats.Attention > 1 ? 'Patients à surveiller' : 'Patient à surveiller',
+                type: 'warning',
+            });
+        }
+
+        return alerts;
+    }, [stats]);
+
     // Header component for the patient list
     const ListHeader = () => (
         <>
-            <AlertsBox alerts={MOCK_ALERTS} />
+            {activeAlerts.length > 0 && <AlertsBox alerts={activeAlerts} />}
             <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Mes Patients</Text>
             </View>
@@ -108,7 +76,7 @@ export default function HomeScreen() {
     );
 
     // Render function for each patient item
-    const renderItem = ({ item }: { item: Patient }) => (
+    const renderItem = ({ item }: { item: PatientOverview }) => (
         <PatientCard
             {...item}
             onAccessChange={(newValue) => toggleAccess(item.id, newValue)}
@@ -120,8 +88,17 @@ export default function HomeScreen() {
     async function handleAddPatient(formData: PatientFormData) {
         setIsSubmitting(true);
         try {
-            // Call the createPatient function with a mock doctor ID and form data
-            await createPatient('9CZZD4d5kb44jPncA9Gt', formData);
+            if (!user?.id) {
+                Toast.show({
+                    type: 'error',
+                    text1: 'Erreur',
+                    text2: 'Utilisateur non authentifié.',
+                    position: 'bottom'
+                });
+                return;
+            }
+
+            await createPatient(user.id, formData);
 
             Toast.show({
                 type: 'success',
@@ -144,21 +121,58 @@ export default function HomeScreen() {
     }
 
     // Handle the switch toggle
-    const toggleAccess = (id: string, newValue: boolean) => {
+    const toggleAccess = async (id: string, newValue: boolean) => {
         setPatients(prevPatients =>
             prevPatients.map(p =>
                 p.id === id ? { ...p, accessStatus: newValue } : p
             )
         );
+
+        await updateUserAccessStatus(id, newValue); // Update in Firestore
         console.log(`Patient ${id} access updated to: ${newValue}`);
     };
+
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const doctor = user;
+                if (doctor) {
+                    const d = await getDoctorById(doctor.id);
+                    setDoctor(d);
+
+                    // Counts patients
+                    const patientCount = await countPatientsByDoctorId(doctor.id);
+                    setPatientCount(patientCount);
+
+                    const patientsData = await getPatientsOverviewState(doctor.id);
+                    setPatients(patientsData);
+                }
+            } catch (error: any) {
+                console.error("Error loading doctor data: ", error);
+                Toast.show({
+                    type: 'error',
+                    text1: 'Erreur',
+                    text2: 'Échec du chargement des données du médecin.',
+                    position: 'bottom'
+                });
+            }
+        }
+
+        load();
+    }, [user]);
+
+    useEffect(() => {
+        if (user?.id) {
+            getPatientStatusCounts(user.id).then(setStats);
+        }
+    }, [user?.id]);
 
     return (
         <ThemedView style={styles.container}>
             <DoctorSummaryCard
-                name="Dr. Claire Rousseau"
-                specialty="Cardiologue"
-                patientCount={patients.length}
+                name={user?.name || 'Nom du médecin'}
+                specialty={doctor?.specialty || 'Spécialité'}
+                patientCount={doctor ? patientCount : 0}
             />
 
             <View style={styles.searchBar}>

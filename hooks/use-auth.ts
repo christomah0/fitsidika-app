@@ -28,8 +28,8 @@ export const useAuth = () => {
     mutationFn: async (email: string) => {
       const userData = await getUserByIdOrEmail(email);
 
-      if (!userData) {
-        throw new Error('Compte utilisateur introuvable ou inexistant.');
+      if (!userData || !userData.hasAccess) {
+        throw new Error('Compte utilisateur introuvable ou non permis.');
       }
 
       await SecureStore.setItemAsync(SESSION_KEY, JSON.stringify(userData));
