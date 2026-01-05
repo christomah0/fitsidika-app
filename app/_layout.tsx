@@ -13,14 +13,14 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-
+  
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <SafeAreaProvider>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="splash" options={{ headerShown: false }} />
+           <Stack.Screen name="login" options={{ headerShown: false }} />
         </Stack>
       </SafeAreaProvider>
       <StatusBar style="auto" />
