@@ -101,6 +101,8 @@ const styles = StyleSheet.create({
         padding: 16,
         marginBottom: 16,
         backgroundColor: 'white',
+        borderWidth: 1,
+        borderColor: '#f2f2f2'
     },
     cardHeader: {
         flexDirection: 'row'

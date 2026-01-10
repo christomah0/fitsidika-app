@@ -1,25 +1,26 @@
 import { DoctorBase } from '@/types/doctor.type';
-import { db } from './firebaseConfig';
-import {
-    collection,
-    getDocs,
-    query,
-    where,
-    addDoc,
-    doc,
-    getDoc,
-    setDoc,
-    serverTimestamp,
-    limit,
-    getCountFromServer,
-    orderBy
-} from 'firebase/firestore';
+import { PatientOverview } from '@/types/patient-overview';
 import { Patient, PatientBase, PatientFormData } from '@/types/patient.type';
+import { Symptom, SymptomCreate } from '@/types/symptom.type';
 import { User, UserBase } from '@/types/user.type';
 import { VitalSignsCreate } from '@/types/vital-signs.type';
 import { formatTime } from '@/utils/date-format';
 import { getPatientStatus } from '@/utils/patient-status';
-import { PatientOverview } from '@/types/patient-overview';
+import {
+    addDoc,
+    collection,
+    doc,
+    getCountFromServer,
+    getDoc,
+    getDocs,
+    limit,
+    orderBy,
+    query,
+    serverTimestamp,
+    setDoc,
+    where
+} from 'firebase/firestore';
+import { db } from './firebaseConfig';
 
 // Fetch all doctors from Firestore
 export const getDoctors = async () => {
@@ -51,8 +52,12 @@ export const getDoctorById = async (doctorId: string) => {
 // Count patients associated with a specific doctor ID from Firestore
 export const countPatientsByDoctorId = async (doctorId: string) => {
     try {
-        const patientsRef = collection(db, 'patients');
-        const q = query(patientsRef, where('createdByDoctorId', '==', doctorId));
+        const usersRef = collection(db, 'users');
+        const q = query(
+            usersRef,
+            where('createdByDoctorId', '==', doctorId),
+            where('role', '==', 'patient')
+        );
         const snapshot = await getCountFromServer(q);
         return snapshot.data().count;
     } catch (error) {
@@ -161,25 +166,64 @@ export const createPatientVitalSigns = async (patientId: string, vitalsData: Vit
     }
 }
 
-export const getPatientsOverviewState = async (doctorId: string) => {
+export const createPatientSymptom = async (patientId: string, symptomData: SymptomCreate) => {
     try {
-        // Get all Patient records assigned to this Doctor
-        const patientsRef = collection(db, 'patients');
-        const q = query(patientsRef, where('createdByDoctorId', '==', doctorId));
-        const patientSnap = await getDocs(q);
+        // Reference to the sub-collection: patients -> [ID] -> symptoms
+        const symptomsSubCollectionRef = collection(db, 'patients', patientId, 'symptoms');
+
+        await addDoc(symptomsSubCollectionRef, {
+            ...symptomData,
+            date: symptomData.date instanceof Date ? symptomData.date : new Date(symptomData.date),
+            createdAt: serverTimestamp()
+        });
+    } catch (error) {
+        console.error("Error creating patient symptom: ", error);
+        throw error;
+    }
+}
+
+export const getLast2Symptoms = async (patientId: string): Promise<Symptom[]> => {
+    try {
+        const symptomsRef = collection(db, 'patients', patientId, 'symptoms');
+        const q = query(symptomsRef, orderBy('date', 'desc'), limit(2));
+        const snap = await getDocs(q);
+
+        return snap.docs.map(d => {
+            const data: any = d.data();
+            const rawDate = data.date;
+            const date = rawDate?.toDate ? rawDate.toDate() : (rawDate instanceof Date ? rawDate : new Date(rawDate));
+
+            return {
+                id: d.id,
+                ...data,
+                date
+            } as Symptom;
+        });
+    } catch (error) {
+        console.error("Error fetching last symptoms: ", error);
+        throw error;
+    }
+}
+
+export const getPatientsOverviewState = async (doctorId: string): Promise<PatientOverview[]> => {
+    try {
+        // Get all User records assigned to this Doctor
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('createdByDoctorId', '==', doctorId), where('role', '==', 'patient'));
+        const userSnap = await getDocs(q);
 
         const overviewData = await Promise.all(
-            patientSnap.docs.map(async (patientDoc) => {
-                const patientData = patientDoc.data();
-                const patientId = patientDoc.id;
+            userSnap.docs.map(async (userDoc) => {
+                const userId = userDoc.id;
+                const userData = userDoc.data();
 
-                // Fetch User Profile (for Name, Avatar, etc.) from 'users' collection
-                const userRef = doc(db, 'users', patientId);
-                const userSnap = await getDoc(userRef);
-                const userData = userSnap.exists() ? userSnap.data() : {};
+                // Fetch Patient data from 'patients' collection
+                const patientRef = doc(db, 'patients', userId);
+                const patientSnap = await getDoc(patientRef);
+                const patientData = patientSnap.exists() ? patientSnap.data() : {};
 
                 // Fetch the most recent Vital Signs from sub-collection
-                const vitalsRef = collection(db, 'patients', patientId, 'vitalSigns');
+                const vitalsRef = collection(db, 'patients', userId, 'vitalSigns');
                 const latestVitalsQuery = query(vitalsRef, orderBy('createdAt', 'desc'), limit(1));
                 const vitalsSnap = await getDocs(latestVitalsQuery);
 
@@ -187,22 +231,50 @@ export const getPatientsOverviewState = async (doctorId: string) => {
                     ? vitalsSnap.docs[0].data()
                     : null;
 
+                const bp = latestVitals?.bp
+                    ? `${latestVitals.bp.systolic}/${latestVitals.bp.diastolic}`
+                    : "N/A";
+
+                const calculateAge = (birthDate: any): number => {
+                    if (!birthDate) return 0;
+                    const birth = birthDate instanceof Date ? birthDate : new Date(birthDate);
+                    const today = new Date();
+                    let age = today.getFullYear() - birth.getFullYear();
+                    const monthDiff = today.getMonth() - birth.getMonth();
+                    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+                        age--;
+                    }
+                    return age;
+                };
+
+                const validateGender = (gender: string): string => {
+                    switch (gender) {
+                        case 'M':
+                            return 'Homme';
+                        case 'F':
+                            return 'Femme';
+                        case 'O':
+                            return 'Autre';
+                        default:
+                            return 'N/A';
+                    }
+                };
+
                 return {
-                    id: patientId,
-                    name: userData.name || "Unknown Patient", // From 'users'
-                    age: patientData.age,                    // From 'patients'
+                    id: userId,
+                    name: userData.name || "Unknown Patient",
+                    age: calculateAge(patientData.birthDate.toDate()),
+                    gender: validateGender(patientData.gender),
                     status: getPatientStatus({
                         systolic: latestVitals?.bp?.systolic || 0,
                         diastolic: latestVitals?.bp?.diastolic || 0,
                         spo2: latestVitals?.spo2 || 100
                     }),
-                    accessStatus: patientData.accessStatus,
-                    bp: latestVitals?.bp || "N/A",
+                    accessStatus: userData.hasAccess || false,
+                    bp,
                     sugar: latestVitals?.sugar || 0,
                     heartRate: latestVitals?.heartRate || 0,
-                    lastUpdate: latestVitals?.createdAt
-                        ? formatTime(latestVitals.createdAt)
-                        : "N/A"
+                    lastUpdate: formatTime(userData.updatedAt ?? userData.createdAt)
                 } as PatientOverview;
             })
         );
@@ -214,6 +286,9 @@ export const getPatientsOverviewState = async (doctorId: string) => {
     }
 }
 
+/**
+ * Count patients by their status for a specific doctor
+ *  */
 export const getPatientStatusCounts = async (doctorId: string) => {
     try {
         const patients = await getPatientsOverviewState(doctorId);

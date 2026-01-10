@@ -1,31 +1,59 @@
-import React, { useState } from 'react';
-import { StyleSheet, ScrollView, View, TouchableOpacity, Image, Platform } from 'react-native';
-import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
+import { GuideBox } from '@/components/guide-box';
+import { HistoryCard } from '@/components/history-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { GuideBox } from '@/components/guide-box';
-import { HistoryCard } from '@/components/history-card';
 import { Colors } from '@/constants/theme';
+import { getLast2Symptoms } from '@/services/firebase/firestoreServices';
+import { PatientOverview } from '@/types/patient-overview';
+import { Symptom } from '@/types/symptom.type';
+import { formatTime } from '@/utils/date-format';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import React, { useEffect, useLayoutEffect, useState } from 'react';
+import { Image, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 type TabType = 'vitals' | 'plan';
 
 export default function PatientDetailScreen() {
-    const { id } = useLocalSearchParams();
+    const { id, patient: patientString } = useLocalSearchParams();
     const [activeTab, setActiveTab] = useState<TabType>('vitals');
     const router = useRouter();
+    const navigation = useNavigation();
 
-    // In a real app, fetch data based on ID. Using Mock data for now.
-    const patient = {
-        name: "Marie Dubois",
-        age: 68,
-        gender: "Femme",
-        phone: "06 12 34 56 78",
-        status: "Critique",
-        bp: "142/95",
-        sugar: 1.58,
-        heartRate: 88,
-    };
+    // Parse the patient data from params
+    const patient = patientString ? JSON.parse(patientString as string) as PatientOverview : null;
+
+    const [symptoms, setSymptoms] = useState<Symptom[]>([]);
+
+    useEffect(() => {
+        if (!id) return;
+
+        (async () => {
+            try {
+                const latest = await getLast2Symptoms(id as string);
+                setSymptoms(latest);
+            } catch (err) {
+                console.error('Failed to load symptoms', err);
+            }
+        })();
+    }, [id]);
+
+    useLayoutEffect(() => {
+        navigation.setOptions({
+            headerRight: () => (
+                <TouchableOpacity onPress={() => {
+                    if (!id) return;
+                    const sid = Array.isArray(id) ? id[0] : id;
+                    router.push({
+                        pathname: "/(doctor)/patients/history/[id]",
+                        params: { id: sid }
+                    });
+                }}>
+                    <IconSymbol name="clock.arrow.circlepath" size={20} color="#000" />
+                </TouchableOpacity>
+            ),
+        });
+    }, [navigation, id, router]);
 
     return (
         <ThemedView style={styles.container}>
@@ -33,8 +61,8 @@ export default function PatientDetailScreen() {
                 {/* Patient profile header */}
                 <View style={styles.profileHeader}>
                     <Image source={{ uri: 'https://via.placeholder.com/100' }} style={styles.avatar} />
-                    <ThemedText type="subtitle" style={styles.name}>{patient.name}</ThemedText>
-                    <ThemedText style={styles.subInfo}>{patient.age} ans • {patient.gender}</ThemedText>
+                    <ThemedText type="subtitle" style={styles.name}>{patient?.name}</ThemedText>
+                    <ThemedText style={styles.subInfo}>{patient?.age} ans • {patient?.gender}</ThemedText>
 
                     <View style={styles.actionRow}>
                         <TouchableOpacity style={styles.circleAction}>
@@ -74,9 +102,9 @@ export default function PatientDetailScreen() {
                         <View style={styles.section}>
                             <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Derniers Vitaux</ThemedText>
                             <View style={styles.vitalsGrid}>
-                                <VitalCard icon="heart.fill" label="Tension" value={patient.bp} unit="mmHg" color="#EF4444" />
-                                <VitalCard icon="drop.fill" label="Glycémie" value={patient.sugar} unit="g/L" color="#3B82F6" />
-                                <VitalCard icon="waveform.path.ecg" label="Rythme" value={patient.heartRate} unit="bpm" color="#10B981" />
+                                <VitalCard icon="heart.fill" label="Tension" value={patient?.bp} unit="mmHg" color="#EF4444" />
+                                <VitalCard icon="drop.fill" label="Glycémie" value={patient?.sugar} unit="g/L" color="#3B82F6" />
+                                <VitalCard icon="waveform.path.ecg" label="Rythme" value={patient?.heartRate} unit="bpm" color="#10B981" />
                             </View>
                         </View>
 
@@ -84,9 +112,9 @@ export default function PatientDetailScreen() {
                         <View style={styles.section}>
                             <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>État de Santé</ThemedText>
                             <GuideBox
-                                variant={patient.status === 'Critique' ? 'severe' : 'light'}
-                                range={`Statut: ${patient.status}`}
-                                desc="Dernière mise à jour il y a 15 minutes via l'appareil connecté."
+                                variant={patient?.status === 'Critique' ? 'severe' : 'light'}
+                                range={`Statut: ${patient?.status}`}
+                                desc=""
                             />
                         </View>
 
@@ -94,22 +122,30 @@ export default function PatientDetailScreen() {
                         <View style={styles.section}>
                             <View style={styles.rowHeader}>
                                 <ThemedText type="defaultSemiBold">Historique des Symptômes</ThemedText>
-                                <TouchableOpacity onPress={() => router.push('/(doctor)/patients/history')}>
+                                <TouchableOpacity onPress={() => {
+                                    if (!id) return;
+                                    const sid = Array.isArray(id) ? id[0] : id;
+                                    router.push({
+                                        pathname: "/(doctor)/patients/history/[id]",
+                                        params: { id: sid }
+                                    });
+                                }}>
                                     <ThemedText style={styles.seeAll}>Voir tout</ThemedText>
                                 </TouchableOpacity>
                             </View>
-                            <HistoryCard
-                                title="Maux de tête"
-                                date="Aujourd'hui, 14:30"
-                                severity={6}
-                                note="Douleur pulsatile signalée après le déjeuner."
-                            />
-                            <HistoryCard
-                                title="Fatigue intense"
-                                date="Hier, 10:15"
-                                severity={4}
-                                note="Le patient se sent faible depuis le réveil."
-                            />
+                            {symptoms.length > 0 ? (
+                                symptoms.map(s => (
+                                    <HistoryCard
+                                        key={s.id}
+                                        title={s.title}
+                                        date={formatTime(s.date)}
+                                        severity={s.severity}
+                                        note={s.notes ?? ''}
+                                    />
+                                ))
+                            ) : (
+                                <ThemedText style={{ color: '#6B7280', fontStyle: 'italic' }}>Aucun symptôme récent enregistré.</ThemedText>
+                            )}
                         </View>
                     </>
                 ) : (
@@ -117,6 +153,11 @@ export default function PatientDetailScreen() {
                         <View style={styles.planContainer}>
                             <ThemedText type="subtitle" style={styles.planTitle}>Gestion du Plan de Soins</ThemedText>
                             <ThemedText style={styles.planDesc}>Configurez le traitement et les objectifs pour votre patient.</ThemedText>
+
+                            <TouchableOpacity style={styles.prescribeBtn}>
+                                <IconSymbol name="plus" size={20} color="white" />
+                                <ThemedText style={styles.btnText}>Ajouter signe vitaux</ThemedText>
+                            </TouchableOpacity>
 
                             <TouchableOpacity style={styles.prescribeBtn}>
                                 <IconSymbol name="plus" size={20} color="white" />
@@ -133,7 +174,14 @@ export default function PatientDetailScreen() {
                         <View style={styles.section}>
                             <View style={styles.rowHeader}>
                                 <ThemedText type="defaultSemiBold">Historique des Médicaments</ThemedText>
-                                <TouchableOpacity onPress={() => router.push('/(doctor)/patients/history')}>
+                                <TouchableOpacity onPress={() => {
+                                    if (!id) return;
+                                    const sid = Array.isArray(id) ? id[0] : id;
+                                    router.push({
+                                        pathname: "/(doctor)/patients/history/[id]",
+                                        params: { id: sid }
+                                    });
+                                }}>
                                     <ThemedText style={styles.seeAll}>Voir tout</ThemedText>
                                 </TouchableOpacity>
                             </View>

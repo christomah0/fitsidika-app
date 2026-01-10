@@ -10,7 +10,7 @@ import { Colors } from '@/constants/theme';
 import { countPatientsByDoctorId, createPatient, getDoctorById, getPatientsOverviewState, getPatientStatusCounts, updateUserAccessStatus } from '@/services/firebase/firestoreServices';
 import { PatientFormData } from '@/types/patient.type';
 import { useRouter } from 'expo-router';
-import { FlatList } from 'react-native';
+import { ActivityIndicator, FlatList } from 'react-native';
 import {
     StyleSheet,
     View,
@@ -22,6 +22,7 @@ import Toast from 'react-native-toast-message';
 import { useAuth } from '@/hooks/use-auth';
 import { DoctorBase } from '@/types/doctor.type';
 import { PatientOverview } from '@/types/patient-overview';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 export default function HomeScreen() {
     const [modalVisible, setModalVisible] = useState(false);
@@ -30,9 +31,27 @@ export default function HomeScreen() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const { user } = useAuth();
     const [doctor, setDoctor] = useState<DoctorBase | null>(null);
-    const [patientCount, setPatientCount] = useState<number>(0);
-    const [patients, setPatients] = useState<PatientOverview[]>([]);
-    const [stats, setStats] = useState({ Critique: 0, Attention: 0, Normal: 0 });
+
+    const queryClient = useQueryClient();
+    const doctorId = user?.id;
+
+    const { data: patientCount } = useQuery({
+        queryKey: ['patientCount', doctorId],
+        queryFn: () => countPatientsByDoctorId(doctorId!),
+        enabled: !!doctorId
+    });
+
+    const { data: patients = [], isLoading: isPatientsLoading } = useQuery({
+        queryKey: ['patientsOverview', doctorId],
+        queryFn: () => getPatientsOverviewState(doctorId!),
+        enabled: !!doctorId
+    });
+
+    const { data: stats = { Critique: 0, Attention: 0, Normal: 0 } } = useQuery({
+        queryKey: ['patientStatusCounts', doctorId],
+        queryFn: () => getPatientStatusCounts(doctorId!),
+        enabled: !!doctorId
+    });
 
     // Filter patients based on search query
     const filteredPatients = useMemo(() => {
@@ -80,7 +99,10 @@ export default function HomeScreen() {
         <PatientCard
             {...item}
             onAccessChange={(newValue) => toggleAccess(item.id, newValue)}
-            onDetailsPress={() => router.push(`/patients/details/${item.id}`)}
+            onDetailsPress={() => router.push({
+                pathname: "/(doctor)/patients/details/[id]",
+                params: { id: item.id, patient: JSON.stringify(item) }
+            })}
         />
     );
 
@@ -108,6 +130,10 @@ export default function HomeScreen() {
             });
 
             setModalVisible(false);
+
+            queryClient.invalidateQueries({ queryKey: ['patientCount', user.id] });
+            queryClient.invalidateQueries({ queryKey: ['patientsOverview', user.id] });
+            queryClient.invalidateQueries({ queryKey: ['patientStatusCounts', user.id] });
         } catch (err) {
             Toast.show({
                 type: 'error',
@@ -122,30 +148,30 @@ export default function HomeScreen() {
 
     // Handle the switch toggle
     const toggleAccess = async (id: string, newValue: boolean) => {
-        setPatients(prevPatients =>
-            prevPatients.map(p =>
-                p.id === id ? { ...p, accessStatus: newValue } : p
-            )
+        // optimistic update of cached patientsOverview
+        const key = ['patientsOverview', user?.id];
+        const previous = queryClient.getQueryData<PatientOverview[]>(key);
+
+        queryClient.setQueryData<PatientOverview[] | undefined>(key, (old) =>
+            old?.map(p => (p.id === id ? { ...p, accessStatus: newValue } : p))
         );
 
-        await updateUserAccessStatus(id, newValue); // Update in Firestore
-        console.log(`Patient ${id} access updated to: ${newValue}`);
+        try {
+            console.log('Updating access status for', id, 'to', newValue);
+            await updateUserAccessStatus(id, newValue);
+        } catch (err) {
+            // rollback on error
+            if (previous) queryClient.setQueryData(key, previous);
+            console.error('Failed to update access status', err);
+        }
     };
 
     useEffect(() => {
-        const load = async () => {
+        const loadDoctor = async () => {
             try {
-                const doctor = user;
-                if (doctor) {
-                    const d = await getDoctorById(doctor.id);
+                if (user) {
+                    const d = await getDoctorById(user.id);
                     setDoctor(d);
-
-                    // Counts patients
-                    const patientCount = await countPatientsByDoctorId(doctor.id);
-                    setPatientCount(patientCount);
-
-                    const patientsData = await getPatientsOverviewState(doctor.id);
-                    setPatients(patientsData);
                 }
             } catch (error: any) {
                 console.error("Error loading doctor data: ", error);
@@ -156,23 +182,17 @@ export default function HomeScreen() {
                     position: 'bottom'
                 });
             }
-        }
+        };
 
-        load();
+        loadDoctor();
     }, [user]);
-
-    useEffect(() => {
-        if (user?.id) {
-            getPatientStatusCounts(user.id).then(setStats);
-        }
-    }, [user?.id]);
 
     return (
         <ThemedView style={styles.container}>
             <DoctorSummaryCard
                 name={user?.name || 'Nom du médecin'}
                 specialty={doctor?.specialty || 'Spécialité'}
-                patientCount={doctor ? patientCount : 0}
+                patientCount={doctor ? (patientCount ?? 0) : 0}
             />
 
             <View style={styles.searchBar}>
@@ -191,7 +211,7 @@ export default function HomeScreen() {
                 keyExtractor={(item) => item.id}
                 renderItem={renderItem}
                 ListHeaderComponent={ListHeader}
-                ListEmptyComponent={<Text style={styles.emptyState}>Aucun patient trouvé</Text>}
+                ListEmptyComponent={isPatientsLoading ? <ActivityIndicator color="#000" size="large" /> : <Text style={styles.emptyState}>Aucun patient trouvé</Text>}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
                 removeClippedSubviews={true}

@@ -4,6 +4,7 @@ export interface PatientOverview {
   id: string;
   name: string;
   age: number;
+  gender: string;
   status: HealthStatus;
 
   /** Blood Pressure is represented as a string (e.g., "142/95"). */

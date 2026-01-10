@@ -6,7 +6,7 @@ export const dateOnly = (date: Date) => {
 };
 
 export const formatTime = (timestamp: any) => {
-    if (!timestamp) return "No data";
+    if (!timestamp) return "Aucune donnée";
     
     // Convert Firestore Timestamp to JS Date
     const date = timestamp.toDate(); 

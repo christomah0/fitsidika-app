@@ -12,6 +12,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { ThemedText } from '@/components/themed-text';
+import { useLocalSearchParams } from 'expo-router';
 
 type TabType = 'meds' | 'obj' | 'vitals' | 'symp';
 
@@ -157,6 +158,7 @@ export default function MedicalHistoryScreen() {
     const [endDate, setEndDate] = useState<Date>(new Date());
     const [showStart, setShowStart] = useState<boolean>(false);
     const [showEnd, setShowEnd] = useState<boolean>(false);
+    const { id } = useLocalSearchParams();
 
     const onDateChange = (
         event: DateTimePickerEvent,

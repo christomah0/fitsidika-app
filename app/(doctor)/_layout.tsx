@@ -4,9 +4,16 @@ import { AppDoctorTopBar } from "@/components/app-doctor-top-bar";
 import { Stack, useRouter } from "expo-router";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { IconSymbol } from "@/components/ui/icon-symbol";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function DoctorLayout() {
     const router = useRouter();
+    const {user, isLoading} = useAuth();
+
+    const role = user?.role === 'doctor' ? 'Médecin' :
+                 user?.role === 'patient' ? 'Infirmier' :
+                 user?.role === 'admin' ? 'Administrateur' :
+                 'Utilisateur';
 
     const handleNotificationsPress = () => {
         // router.push('notifications');
@@ -23,7 +30,7 @@ export default function DoctorLayout() {
                         header: () => (
                             <AppDoctorTopBar
                                 onNotificationsPress={handleNotificationsPress}
-                                userName="Utilisateur"
+                                userName={ isLoading ? 'Chargement...' : role}
                                 notificationsCount={7}
                             />
                         ),
@@ -38,16 +45,11 @@ export default function DoctorLayout() {
                             <TouchableOpacity onPress={() => router.back()}>
                                 <IconSymbol name="chevron.left" size={20} color="#000" />
                             </TouchableOpacity>
-                        ),
-                        headerRight: () => (
-                            <TouchableOpacity onPress={() => router.push('/(doctor)/patients/history')}>
-                                <IconSymbol name="clock.arrow.circlepath" size={20} color="#000" />
-                            </TouchableOpacity>
-                        ),
+                        )
                     }}
                 />
                 <Stack.Screen
-                    name="patients/history"
+                    name="patients/history/[id]"
                     options={{
                         headerShown: true,
                         title: 'Historique Médical',
