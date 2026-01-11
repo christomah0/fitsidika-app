@@ -2,14 +2,14 @@ import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { ThemedText } from "@/components/themed-text";
 
-interface HistoryCardProps {
+interface AppSymptomHistoryCardProps {
     title: string;
     date: string;
     severity: number;
     note: string;
 }
 
-export const HistoryCard = ({ title, date, severity, note }: HistoryCardProps) => {
+export const AppSymptomHistoryCard = ({ title, date, severity, note }: AppSymptomHistoryCardProps) => {
     const isSevere = severity > 6;
 
     return (
@@ -36,6 +36,11 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         padding: 16,
         marginBottom: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2,
     },
     cardHeader: {
         flexDirection: 'row',

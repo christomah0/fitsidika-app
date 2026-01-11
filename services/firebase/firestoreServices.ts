@@ -21,6 +21,7 @@ import {
     where
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
+import { Medication } from '@/types/medication.type';
 
 // Fetch all doctors from Firestore
 export const getDoctors = async () => {
@@ -201,6 +202,29 @@ export const getLast2Symptoms = async (patientId: string): Promise<Symptom[]> =>
         });
     } catch (error) {
         console.error("Error fetching last symptoms: ", error);
+        throw error;
+    }
+}
+
+export const getLast2Medications = async (patientId: string): Promise<Medication[]> => {
+    try {
+        const medicationsRef = collection(db, 'patients', patientId, 'medications');
+        const q = query(medicationsRef, orderBy('startDate', 'desc'), limit(2));
+        const snap = await getDocs(q);
+
+        return snap.docs.map(d => {
+            const data: any = d.data();
+            const rawDate = data.startDate;
+            const startDate = rawDate?.toDate ? rawDate.toDate() : (rawDate instanceof Date ? rawDate : new Date(rawDate));
+
+            return {
+                id: d.id,
+                ...data,
+                startDate
+            } as Medication;
+        });
+    } catch (error) {
+        console.error("Error fetching last medications: ", error);
         throw error;
     }
 }

@@ -1,22 +1,22 @@
-import React, { useState } from 'react';
-import {
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  View,
-  Modal,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import Slider from '@react-native-community/slider';
+import { AppSymptomHistoryCard } from '@/components/app-symptom-history-card';
+import { GuideBox } from '@/components/guide-box';
+import { SymptomSelector } from '@/components/symptom-selector';
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { SymptomSelector } from '@/components/symptom-selector';
-import { GuideBox } from '@/components/guide-box';
-import { HistoryCard } from '@/components/history-card';
 import { Colors } from '@/constants/theme';
+import Slider from '@react-native-community/slider';
+import React, { useState } from 'react';
+import {
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 
 const SYMPTOMS = [
   { id: '1', label: 'Maux de tête', icon: '🤕' },
@@ -61,7 +61,7 @@ export default function SymptomsScreen() {
         {/* History Card */}
         <View style={styles.card}>
           <ThemedText type="defaultSemiBold" style={{ marginBottom: 12 }}>Dernier relevé</ThemedText>
-          <HistoryCard
+          <AppSymptomHistoryCard
             title="Maux de tête"
             date="24 Nov 14:30"
             severity={6}
