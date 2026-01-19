@@ -27,6 +27,8 @@ const MAPPING = {
   'doc.text': 'description',
   'list.bullet.clipboard': 'assignment',
   'target': 'flag',
+  'arrow.forward': 'arrow-forward',
+  'sparkle': 'star',
 } as IconMapping;
 
 /**
