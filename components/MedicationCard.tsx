@@ -1,9 +1,9 @@
 // /app/(tabs)/(medocs)/MedicationCard.tsx
 
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Medication } from '../../../constants/medicationTypes';
+import React from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Medication } from '../../constants/medicationTypes';
 
 interface MedicationCardProps {
   medication: Medication;

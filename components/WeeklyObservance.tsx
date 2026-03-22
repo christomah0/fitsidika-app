@@ -1,8 +1,8 @@
 // /app/(tabs)/(medocs)/WeeklyObservance.tsx
 
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { WeeklyObservance } from '../../../constants/medicationTypes';
+import { StyleSheet, Text, View } from 'react-native';
+import { WeeklyObservance } from '../../constants/medicationTypes';
 
 interface WeeklyObservanceProps {
   data: WeeklyObservance;

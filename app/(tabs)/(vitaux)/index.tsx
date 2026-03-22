@@ -1,18 +1,24 @@
+import { ThemedView } from '@/components/themed-view';
+import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Dimensions, ScrollView, Alert
+    ActivityIndicator,
+    Alert,
+    Dimensions, ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons'; 
 import { BarChart } from 'react-native-chart-kit';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { ThemedView } from '@/components/themed-view';
 
 // --- MODIFICATION ICI : Ajout de addDoc ---
 import { db } from '@/services/firebase/firebaseConfig';
-import { collection, query, orderBy, where, onSnapshot, addDoc } from "firebase/firestore";
+import { addDoc, collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 
-import { VitalInputModal, NewVitalRecordData } from './VitalInputModal'; 
-import { SuccessModal } from './SuccessModal'; 
+import { SuccessModal } from '../../../components/SuccessModal';
+import { NewVitalRecordData, VitalInputModal } from '../../../components/VitalInputModal';
 
 /* ================= CONFIGURATION ================= */
 type MetricType = 'Tension' | 'Cœur' | 'Glycémie' | 'SpO2' | 'Température';

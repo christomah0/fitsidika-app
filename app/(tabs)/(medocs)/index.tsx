@@ -1,21 +1,21 @@
 // /app/(tabs)/(medocs)/MedicationsScreen.tsx
 
+import { useFocusEffect, useRouter } from 'expo-router';
 import React from 'react';
 import {
-  View,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  ActivityIndicator,
+    ActivityIndicator,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
-import { CompactObservanceCard } from './CompactObservanceCard';
+import { CompactObservanceCard } from '../../../components/CompactObservanceCard';
+import { MedicationCard } from '../../../components/MedicationCard';
+import { RenewalAlert } from '../../../components/RenewalAlert';
+import { WeeklyObservanceCard } from '../../../components/WeeklyObservance';
 import { useMedications } from '../../../hooks/useMedications';
-import { MedicationCard } from './MedicationCard';
-import { WeeklyObservanceCard } from './WeeklyObservance';
-import { RenewalAlert } from './RenewalAlert';
 
 export default function MedicationsScreen() {
   const router = useRouter();
