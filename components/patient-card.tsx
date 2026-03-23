@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Switch, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, Switch, TouchableOpacity, Platform } from 'react-native';
 import { IconSymbol } from './ui/icon-symbol';
+import { Colors } from '@/constants/theme';
 
 interface PatientProps {
     name: string;
@@ -30,10 +31,19 @@ const PatientCard = ({
     const tagColor = status === 'Critique' ? '#FEE2E2' : status === 'Attention' ? '#FEF3C7' : '#DCFCE7';
     const textColor = status === 'Critique' ? '#991B1B' : status === 'Attention' ? '#92400E' : '#166534';
 
+    const initials = name
+        .split(' ')
+        .map(n => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2);
+
     return (
         <View style={[styles.card, { backgroundColor: '#FFFFFF' }]}>
             <View style={styles.cardHeader}>
-                <Image source={{ uri: 'https://via.placeholder.com/60' }} style={styles.avatar} />
+                <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{initials}</Text>
+                </View>
 
                 <View style={styles.infoContainer}>
                     <View style={styles.nameRow}>
@@ -112,7 +122,14 @@ const styles = StyleSheet.create({
         height: 56,
         borderRadius: 28,
         marginRight: 14,
-        backgroundColor: '#F3F4F6'
+        backgroundColor: Colors.light.tint + '20',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarText: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: Colors.light.tint,
     },
     infoContainer: {
         flex: 1
