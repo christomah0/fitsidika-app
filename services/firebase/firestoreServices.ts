@@ -13,13 +13,19 @@ import {
     getCountFromServer,
     getDoc,
     getDocs,
+    increment,
     limit,
+    onSnapshot,
     orderBy,
     query,
     serverTimestamp,
     setDoc,
+    Timestamp,
+    updateDoc,
     where
 } from 'firebase/firestore';
+import { Conversation, ConversationCreate, Message, MessageCreate } from '@/types/message.type';
+import { CarePlan, CarePlanCreate, Goal, GoalCreate } from '@/types/care-plan.type';
 import { db } from './firebaseConfig';
 import { Medication } from '@/types/medication.type';
 
@@ -331,5 +337,433 @@ export const getPatientStatusCounts = async (doctorId: string) => {
     } catch (error) {
         console.error("Error counting patient statuses: ", error);
         return { Critique: 0, Attention: 0, Normal: 0 };
+    }
+}
+
+// ==================== DOCTOR/PATIENT LOOKUP ====================
+
+export const getDoctorPatientIds = async (doctorId: string): Promise<{ id: string; name: string }[]> => {
+    try {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('createdByDoctorId', '==', doctorId), where('role', '==', 'patient'));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({ id: d.id, name: d.data().name || 'Patient' }));
+    } catch (error) {
+        console.error("Error fetching doctor patient IDs: ", error);
+        return [];
+    }
+}
+
+export const getDoctorForPatient = async (patientUserId: string): Promise<UserBase | null> => {
+    try {
+        const userDocRef = doc(db, 'users', patientUserId);
+        const userSnap = await getDoc(userDocRef);
+        if (!userSnap.exists()) return null;
+
+        const userData = userSnap.data();
+        const doctorId = userData.createdByDoctorId;
+        if (!doctorId) return null;
+
+        const doctorDocRef = doc(db, 'users', doctorId);
+        const doctorSnap = await getDoc(doctorDocRef);
+        if (!doctorSnap.exists()) return null;
+
+        return { id: doctorSnap.id, ...doctorSnap.data() } as UserBase;
+    } catch (error) {
+        console.error("Error fetching doctor for patient: ", error);
+        return null;
+    }
+}
+
+// ==================== MESSAGING ====================
+
+export const getOrCreateConversation = async (
+    patientId: string,
+    doctorId: string,
+    patientName: string,
+    doctorName: string
+): Promise<string> => {
+    try {
+        const convRef = collection(db, 'conversations');
+        const q = query(
+            convRef,
+            where('patientId', '==', patientId),
+            where('doctorId', '==', doctorId),
+            limit(1)
+        );
+        const snap = await getDocs(q);
+
+        if (!snap.empty) {
+            return snap.docs[0].id;
+        }
+
+        const newConv: ConversationCreate = {
+            patientId,
+            doctorId,
+            patientName,
+            doctorName,
+            lastMessage: '',
+            lastMessageAt: serverTimestamp(),
+            lastMessageBy: '',
+            unreadByPatient: 0,
+            unreadByDoctor: 0,
+        };
+
+        const docRef = await addDoc(convRef, {
+            ...newConv,
+            createdAt: serverTimestamp(),
+        });
+
+        return docRef.id;
+    } catch (error) {
+        console.error("Error creating conversation: ", error);
+        throw error;
+    }
+}
+
+export const getConversationsForUser = async (userId: string, role: 'patient' | 'doctor'): Promise<Conversation[]> => {
+    try {
+        const convRef = collection(db, 'conversations');
+        const field = role === 'patient' ? 'patientId' : 'doctorId';
+        const q = query(convRef, where(field, '==', userId), orderBy('lastMessageAt', 'desc'));
+        const snap = await getDocs(q);
+
+        return snap.docs.map(d => {
+            const data = d.data();
+            return {
+                id: d.id,
+                ...data,
+                lastMessageAt: data.lastMessageAt?.toDate ? data.lastMessageAt.toDate() : new Date(),
+            } as Conversation;
+        });
+    } catch (error) {
+        console.error("Error fetching conversations: ", error);
+        return [];
+    }
+}
+
+export const subscribeToUnreadCount = (
+    userId: string,
+    role: 'patient' | 'doctor',
+    callback: (count: number) => void
+) => {
+    const convRef = collection(db, 'conversations');
+    const field = role === 'patient' ? 'patientId' : 'doctorId';
+    const q = query(convRef, where(field, '==', userId));
+    const unreadField = role === 'patient' ? 'unreadByPatient' : 'unreadByDoctor';
+
+    return onSnapshot(q, (snap) => {
+        let total = 0;
+        snap.docs.forEach(d => {
+            total += d.data()[unreadField] || 0;
+        });
+        callback(total);
+    }, (error) => {
+        console.error("Error in unread count listener: ", error);
+        callback(0);
+    });
+}
+
+// Count new events for a PATIENT since a given date
+// (care plans, goals, medications prescribed by their doctor)
+export const countNewEventsForPatient = async (patientId: string, since: Date): Promise<number> => {
+    try {
+        const sinceTs = Timestamp.fromDate(since);
+        const [plansSnap, goalsSnap, medsSnap] = await Promise.all([
+            getCountFromServer(query(
+                collection(db, 'patients', patientId, 'carePlans'),
+                where('createdAt', '>', sinceTs)
+            )),
+            getCountFromServer(query(
+                collection(db, 'patients', patientId, 'goals'),
+                where('createdAt', '>', sinceTs)
+            )),
+            getCountFromServer(query(
+                collection(db, 'patients', patientId, 'medications'),
+                where('createdAt', '>', sinceTs)
+            )),
+        ]);
+        return plansSnap.data().count + goalsSnap.data().count + medsSnap.data().count;
+    } catch (error) {
+        console.error("Error counting patient events: ", error);
+        return 0;
+    }
+}
+
+// Count new events for a DOCTOR since a given date
+// (vitals, symptoms from all their patients)
+export const countNewEventsForDoctor = async (patientIds: string[], since: Date): Promise<number> => {
+    if (patientIds.length === 0) return 0;
+    try {
+        const sinceTs = Timestamp.fromDate(since);
+        let total = 0;
+
+        const promises = patientIds.map(async (pid) => {
+            const [vitalsSnap, symptomsSnap] = await Promise.all([
+                getCountFromServer(query(
+                    collection(db, 'patients', pid, 'vitalSigns'),
+                    where('createdAt', '>', sinceTs)
+                )),
+                getCountFromServer(query(
+                    collection(db, 'patients', pid, 'symptoms'),
+                    where('date', '>', sinceTs)
+                )),
+            ]);
+            return vitalsSnap.data().count + symptomsSnap.data().count;
+        });
+
+        const counts = await Promise.all(promises);
+        total = counts.reduce((sum, c) => sum + c, 0);
+        return total;
+    } catch (error) {
+        console.error("Error counting doctor events: ", error);
+        return 0;
+    }
+}
+
+export const sendMessage = async (
+    conversationId: string,
+    senderId: string,
+    senderRole: 'patient' | 'doctor',
+    text: string
+): Promise<void> => {
+    try {
+        const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+        await addDoc(messagesRef, {
+            conversationId,
+            senderId,
+            senderRole,
+            text,
+            createdAt: serverTimestamp(),
+        });
+
+        const unreadField = senderRole === 'patient' ? 'unreadByDoctor' : 'unreadByPatient';
+        const convRef = doc(db, 'conversations', conversationId);
+        await updateDoc(convRef, {
+            lastMessage: text,
+            lastMessageAt: serverTimestamp(),
+            lastMessageBy: senderId,
+            [unreadField]: increment(1),
+        });
+    } catch (error) {
+        console.error("Error sending message: ", error);
+        throw error;
+    }
+}
+
+export const markConversationAsRead = async (conversationId: string, role: 'patient' | 'doctor'): Promise<void> => {
+    try {
+        const field = role === 'patient' ? 'unreadByPatient' : 'unreadByDoctor';
+        const convRef = doc(db, 'conversations', conversationId);
+        await updateDoc(convRef, { [field]: 0 });
+    } catch (error) {
+        console.error("Error marking as read: ", error);
+    }
+}
+
+export const subscribeToMessages = (
+    conversationId: string,
+    callback: (messages: Message[]) => void
+) => {
+    const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+    const q = query(messagesRef, orderBy('createdAt', 'asc'));
+
+    return onSnapshot(q, (snap) => {
+        const messages = snap.docs.map(d => {
+            const data = d.data();
+            return {
+                id: d.id,
+                ...data,
+                createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(),
+            } as Message;
+        });
+        callback(messages);
+    });
+}
+
+// ==================== CARE PLANS ====================
+
+export const createCarePlan = async (carePlan: CarePlanCreate): Promise<string> => {
+    try {
+        const ref = collection(db, 'patients', carePlan.patientId, 'carePlans');
+        const docRef = await addDoc(ref, {
+            ...carePlan,
+            startDate: carePlan.startDate instanceof Date ? carePlan.startDate : new Date(carePlan.startDate),
+            endDate: carePlan.endDate instanceof Date ? carePlan.endDate : carePlan.endDate ? new Date(carePlan.endDate) : null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        });
+        return docRef.id;
+    } catch (error) {
+        console.error("Error creating care plan: ", error);
+        throw error;
+    }
+}
+
+export const getCarePlans = async (patientId: string): Promise<CarePlan[]> => {
+    try {
+        const ref = collection(db, 'patients', patientId, 'carePlans');
+        const q = query(ref, orderBy('createdAt', 'desc'));
+        const snap = await getDocs(q);
+
+        return snap.docs.map(d => {
+            const data: any = d.data();
+            return {
+                id: d.id,
+                ...data,
+                startDate: data.startDate?.toDate ? data.startDate.toDate() : new Date(data.startDate),
+                endDate: data.endDate?.toDate ? data.endDate.toDate() : data.endDate ? new Date(data.endDate) : undefined,
+            } as CarePlan;
+        });
+    } catch (error) {
+        console.error("Error fetching care plans: ", error);
+        return [];
+    }
+}
+
+export const updateCarePlanStatus = async (patientId: string, carePlanId: string, status: string): Promise<void> => {
+    try {
+        const ref = doc(db, 'patients', patientId, 'carePlans', carePlanId);
+        await updateDoc(ref, { status, updatedAt: serverTimestamp() });
+    } catch (error) {
+        console.error("Error updating care plan: ", error);
+        throw error;
+    }
+}
+
+// ==================== GOALS ====================
+
+export const createGoal = async (goal: GoalCreate): Promise<string> => {
+    try {
+        const ref = collection(db, 'patients', goal.patientId, 'goals');
+        const docRef = await addDoc(ref, {
+            ...goal,
+            deadline: goal.deadline instanceof Date ? goal.deadline : new Date(goal.deadline),
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        });
+        return docRef.id;
+    } catch (error) {
+        console.error("Error creating goal: ", error);
+        throw error;
+    }
+}
+
+export const getGoals = async (patientId: string): Promise<Goal[]> => {
+    try {
+        const ref = collection(db, 'patients', patientId, 'goals');
+        const q = query(ref, orderBy('createdAt', 'desc'));
+        const snap = await getDocs(q);
+
+        return snap.docs.map(d => {
+            const data: any = d.data();
+            return {
+                id: d.id,
+                ...data,
+                deadline: data.deadline?.toDate ? data.deadline.toDate() : new Date(data.deadline),
+            } as Goal;
+        });
+    } catch (error) {
+        console.error("Error fetching goals: ", error);
+        return [];
+    }
+}
+
+export const updateGoalProgress = async (patientId: string, goalId: string, currentValue: number): Promise<void> => {
+    try {
+        const ref = doc(db, 'patients', patientId, 'goals', goalId);
+        await updateDoc(ref, { currentValue, updatedAt: serverTimestamp() });
+    } catch (error) {
+        console.error("Error updating goal: ", error);
+        throw error;
+    }
+}
+
+export const updateGoalStatus = async (patientId: string, goalId: string, status: string): Promise<void> => {
+    try {
+        const ref = doc(db, 'patients', patientId, 'goals', goalId);
+        await updateDoc(ref, { status, updatedAt: serverTimestamp() });
+    } catch (error) {
+        console.error("Error updating goal status: ", error);
+        throw error;
+    }
+}
+
+// ==================== MEDICATIONS (Firestore) ====================
+
+export const createPatientMedication = async (patientId: string, medication: Omit<Medication, 'id' | 'createdAt'>): Promise<string> => {
+    try {
+        const ref = collection(db, 'patients', patientId, 'medications');
+        const docRef = await addDoc(ref, {
+            ...medication,
+            startDate: medication.startDate instanceof Date ? medication.startDate : new Date(medication.startDate),
+            createdAt: serverTimestamp(),
+        });
+        return docRef.id;
+    } catch (error) {
+        console.error("Error creating medication: ", error);
+        throw error;
+    }
+}
+
+export const getPatientMedications = async (patientId: string): Promise<Medication[]> => {
+    try {
+        const ref = collection(db, 'patients', patientId, 'medications');
+        const q = query(ref, orderBy('createdAt', 'desc'));
+        const snap = await getDocs(q);
+
+        return snap.docs.map(d => {
+            const data: any = d.data();
+            return {
+                id: d.id,
+                ...data,
+                startDate: data.startDate?.toDate ? data.startDate.toDate() : new Date(data.startDate),
+            } as Medication;
+        });
+    } catch (error) {
+        console.error("Error fetching medications: ", error);
+        return [];
+    }
+}
+
+// ==================== VITAL SIGNS (fetch) ====================
+
+export const getPatientVitalSigns = async (patientId: string, limitCount: number = 20) => {
+    try {
+        const ref = collection(db, 'patients', patientId, 'vitalSigns');
+        const q = query(ref, orderBy('createdAt', 'desc'), limit(limitCount));
+        const snap = await getDocs(q);
+
+        return snap.docs.map(d => {
+            const data: any = d.data();
+            return {
+                id: d.id,
+                ...data,
+                createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(),
+            };
+        });
+    } catch (error) {
+        console.error("Error fetching vital signs: ", error);
+        return [];
+    }
+}
+
+export const getPatientSymptoms = async (patientId: string, limitCount: number = 20) => {
+    try {
+        const ref = collection(db, 'patients', patientId, 'symptoms');
+        const q = query(ref, orderBy('date', 'desc'), limit(limitCount));
+        const snap = await getDocs(q);
+
+        return snap.docs.map(d => {
+            const data: any = d.data();
+            return {
+                id: d.id,
+                ...data,
+                date: data.date?.toDate ? data.date.toDate() : new Date(data.date),
+            } as Symptom;
+        });
+    } catch (error) {
+        console.error("Error fetching symptoms: ", error);
+        return [];
     }
 }
