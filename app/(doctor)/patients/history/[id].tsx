@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     StyleSheet,
     View,
@@ -6,6 +6,7 @@ import {
     TouchableOpacity,
     ScrollView,
     Platform,
+    ActivityIndicator,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -13,152 +14,59 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
 import { ThemedText } from '@/components/themed-text';
 import { useLocalSearchParams } from 'expo-router';
+import {
+    getPatientMedications,
+    getGoals,
+    getPatientVitalSigns,
+    getPatientSymptoms,
+} from '@/services/firebase/firestoreServices';
+import { Medication } from '@/types/medication.type';
+import { Goal } from '@/types/care-plan.type';
+import { Symptom } from '@/types/symptom.type';
+import { getPatientStatus } from '@/utils/patient-status';
 
 type TabType = 'meds' | 'obj' | 'vitals' | 'symp';
 
-interface MedicationProps {
-    name: string;
-    dose: string;
-    frequency: string;
-    date: string;
-    status: 'Actif' | 'Terminé' | 'Arrêté';
-    doctor: string;
-}
-
-interface ObjectiveProps {
-    title: string;
-    category: string;
-    target: number;
-    current: number;
-    status: 'En cours' | 'Atteint' | 'Abandonné';
-    deadline: string;
-    color: string;
-}
-
-interface VitalMetric {
-    label: string;
-    value: string;
-    icon: keyof typeof Ionicons.glyphMap;
-    color?: string;
-}
-
-interface VitalSignProps {
-    time: string;
-    metrics: VitalMetric[];
-    statusType: 'Normal' | 'Attention' | 'Critique';
-}
-
-interface SymptomProps {
-    title: string;
-    time: string;
-    severity: 'Léger' | 'Modéré' | 'Sévère';
-    description?: string;
-}
-
-const MedicationCard: React.FC<MedicationProps> = ({ name, dose, frequency, date, status, doctor }) => (
-    <View style={styles.card}>
-        <View style={styles.cardHeader}>
-            <View style={styles.row}>
-                <MaterialCommunityIcons name="pill" size={20} color="#27ae60" />
-                <Text style={styles.cardTitle}>{name}</Text>
-            </View>
-            <View style={[styles.badge, status === 'Actif' ? styles.badgeGreen : styles.badgeGray]}>
-                <Text style={[styles.badgeText, status === 'Actif' ? styles.textGreen : styles.textGray]}>{status}</Text>
-            </View>
-        </View>
-        <Text style={styles.cardSubtext}>{dose} - {frequency}</Text>
-        <View style={styles.infoRow}>
-            <Ionicons name="calendar-outline" size={16} color="#666" />
-            <Text style={styles.infoText}>Prescrit le {date}</Text>
-        </View>
-        <Text style={styles.doctorText}>Par {doctor}</Text>
-    </View>
-);
-
-const ObjectiveCard: React.FC<ObjectiveProps> = ({ title, category, target, current, status, deadline, color }) => {
-    const progress = Math.min(current / target, 1);
-    return (
-        <View style={styles.card}>
-            <View style={styles.cardHeader}>
-                <View style={styles.row}>
-                    <Ionicons name="radio-button-on" size={20} color="#a29bfe" />
-                    <Text style={styles.cardTitle}>{title}</Text>
-                </View>
-                <View style={[styles.badge, status === 'Atteint' ? styles.badgeBlue : styles.badgeGreenLight]}>
-                    <Text style={[styles.badgeText, status === 'Atteint' ? styles.textBlue : styles.textGreen]}>{status}</Text>
-                </View>
-            </View>
-            <Text style={styles.cardSubtext}>{category}</Text>
-            <View style={styles.progressLabelRow}>
-                <Text style={styles.progressLabel}>Objectif: {target}</Text>
-                <Text style={styles.progressLabel}>Actuel: {current}</Text>
-            </View>
-            <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFill, { width: `${progress * 100}%`, backgroundColor: color }]} />
-            </View>
-            <View style={styles.infoRow}>
-                <Ionicons name="time-outline" size={16} color="#666" />
-                <Text style={styles.infoText}>Échéance: {deadline}</Text>
-            </View>
-        </View>
-    );
-};
-
-const VitalSignCard: React.FC<VitalSignProps> = ({ time, metrics, statusType }) => (
-    <View style={[styles.card, statusType === 'Critique' && styles.cardCritique]}>
-        <View style={styles.cardHeader}>
-            <View style={styles.row}>
-                <Ionicons name="time-outline" size={20} color="#666" />
-                <Text style={styles.cardTitle}>{time}</Text>
-            </View>
-            <View style={[styles.badge, statusType === 'Critique' ? styles.badgeRed : styles.badgeOrange]}>
-                <Text style={[styles.badgeText, statusType === 'Critique' ? styles.textRed : styles.textOrange]}>{statusType}</Text>
-            </View>
-        </View>
-        <View style={styles.vitalGrid}>
-            {metrics.map((m, i) => (
-                <View key={i} style={styles.vitalItem}>
-                    <Ionicons name={m.icon} size={18} color={m.color || "#666"} />
-                    <View style={{ marginLeft: 8 }}>
-                        <Text style={styles.vitalLabel}>{m.label}</Text>
-                        <Text style={styles.vitalValue}>{m.value}</Text>
-                    </View>
-                </View>
-            ))}
-        </View>
-    </View>
-);
-
-const SymptomCard: React.FC<SymptomProps> = ({ title, time, severity, description }) => (
-    <View style={styles.card}>
-        <View style={styles.cardHeader}>
-            <View style={styles.row}>
-                <Ionicons name="document-text-outline" size={20} color="#3498db" />
-                <Text style={styles.cardTitle}>{title}</Text>
-            </View>
-            <View style={[styles.badge, severity === 'Sévère' ? styles.badgeRed : severity === 'Modéré' ? styles.badgeOrange : styles.badgeGreenLight]}>
-                <Text style={[styles.badgeText, severity === 'Sévère' ? styles.textRed : severity === 'Modéré' ? styles.textOrange : styles.textGreen]}>{severity}</Text>
-            </View>
-        </View>
-        <View style={styles.infoRow}>
-            <Ionicons name="time-outline" size={16} color="#666" />
-            <Text style={styles.infoText}>{time}</Text>
-        </View>
-        {description && (
-            <View style={styles.descriptionBox}>
-                <Text style={styles.descriptionText}>{description}</Text>
-            </View>
-        )}
-    </View>
-);
-
 export default function MedicalHistoryScreen() {
     const [activeTab, setActiveTab] = useState<TabType>('meds');
-    const [startDate, setStartDate] = useState<Date>(new Date());
+    const [startDate, setStartDate] = useState<Date>(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
     const [endDate, setEndDate] = useState<Date>(new Date());
     const [showStart, setShowStart] = useState<boolean>(false);
     const [showEnd, setShowEnd] = useState<boolean>(false);
     const { id } = useLocalSearchParams();
+    const patientId = Array.isArray(id) ? id[0] : id as string;
+
+    const [medications, setMedications] = useState<Medication[]>([]);
+    const [goals, setGoals] = useState<Goal[]>([]);
+    const [vitalSigns, setVitalSigns] = useState<any[]>([]);
+    const [symptoms, setSymptoms] = useState<Symptom[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!patientId) return;
+
+        const load = async () => {
+            setLoading(true);
+            try {
+                const [meds, goalsData, vitals, symps] = await Promise.all([
+                    getPatientMedications(patientId),
+                    getGoals(patientId),
+                    getPatientVitalSigns(patientId),
+                    getPatientSymptoms(patientId),
+                ]);
+                setMedications(meds);
+                setGoals(goalsData);
+                setVitalSigns(vitals);
+                setSymptoms(symps);
+            } catch (err) {
+                console.error('Error loading history:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        load();
+    }, [patientId]);
 
     const onDateChange = (
         event: DateTimePickerEvent,
@@ -172,6 +80,25 @@ export default function MedicalHistoryScreen() {
             setShowEnd(Platform.OS === 'ios');
             if (selectedDate) setEndDate(selectedDate);
         }
+    };
+
+    const formatDate = (date: Date) => {
+        return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+    };
+
+    const getMedStatus = (med: Medication): 'Actif' | 'Terminé' => {
+        const start = med.startDate instanceof Date ? med.startDate : new Date(med.startDate);
+        const durationMs = med.durationUnit === 'jours' ? med.durationValue * 86400000
+            : med.durationUnit === 'semaines' ? med.durationValue * 7 * 86400000
+            : med.durationValue * 30 * 86400000;
+        const end = new Date(start.getTime() + durationMs);
+        return new Date() <= end ? 'Actif' : 'Terminé';
+    };
+
+    const getSeverityLabel = (severity: number): 'Léger' | 'Modéré' | 'Sévère' => {
+        if (severity <= 3) return 'Léger';
+        if (severity <= 6) return 'Modéré';
+        return 'Sévère';
     };
 
     return (
@@ -209,11 +136,6 @@ export default function MedicalHistoryScreen() {
                         </TouchableOpacity>
                     </View>
                 </View>
-
-                <TouchableOpacity style={styles.applyBtn} activeOpacity={0.8}>
-                    <Ionicons name="filter" size={18} color="white" />
-                    <Text style={styles.applyBtnText}>Appliquer les filtres</Text>
-                </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -252,270 +174,258 @@ export default function MedicalHistoryScreen() {
                     {activeTab === 'symp' && "Historique des Symptômes"}
                 </ThemedText>
 
-                {/* Content Render */}
-                <View style={{ paddingBottom: 30 }}>
-                    {activeTab === 'meds' && (
-                        <>
-                            <MedicationCard name="Lisinopril" dose="10 mg" frequency="1x/jour" date="15 Nov 2024" status="Actif" doctor="Dr. Rousseau" />
-                            <MedicationCard name="Metformine" dose="500 mg" frequency="2x/jour" date="12 Oct 2024" status="Actif" doctor="Dr. Rousseau" />
-                        </>
-                    )}
+                {loading ? (
+                    <ActivityIndicator size="large" color={Colors.light.tint} style={{ marginTop: 40 }} />
+                ) : (
+                    <View style={{ paddingBottom: 30 }}>
+                        {activeTab === 'meds' && (
+                            medications.length > 0 ? (
+                                medications.map(med => (
+                                    <View key={med.id} style={styles.card}>
+                                        <View style={styles.cardHeader}>
+                                            <View style={styles.row}>
+                                                <MaterialCommunityIcons name="pill" size={20} color="#27ae60" />
+                                                <Text style={styles.cardTitle}>{med.name}</Text>
+                                            </View>
+                                            <View style={[styles.badge, getMedStatus(med) === 'Actif' ? styles.badgeGreen : styles.badgeGray]}>
+                                                <Text style={[styles.badgeText, getMedStatus(med) === 'Actif' ? styles.textGreen : styles.textGray]}>
+                                                    {getMedStatus(med)}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                        <Text style={styles.cardSubtext}>
+                                            {med.dosageValue} {med.dosageUnit} - {med.frequency}
+                                        </Text>
+                                        <View style={styles.infoRow}>
+                                            <Ionicons name="calendar-outline" size={16} color="#666" />
+                                            <Text style={styles.infoText}>
+                                                Prescrit le {formatDate(med.startDate instanceof Date ? med.startDate : new Date(med.startDate))}
+                                            </Text>
+                                        </View>
+                                        <Text style={styles.doctorText}>
+                                            Durée: {med.durationValue} {med.durationUnit}
+                                        </Text>
+                                    </View>
+                                ))
+                            ) : (
+                                <Text style={styles.emptyText}>Aucun médicament enregistré.</Text>
+                            )
+                        )}
 
-                    {activeTab === 'obj' && (
-                        <>
-                            <ObjectiveCard title="Tension < 120/80" category="Cardio" target={120} current={142} status="En cours" deadline="31 Déc 2024" color="#a29bfe" />
-                            <ObjectiveCard title="Glycémie < 100" category="Diabète" target={100} current={95} status="Atteint" deadline="31 Déc 2024" color="#2ecc71" />
-                        </>
-                    )}
+                        {activeTab === 'obj' && (
+                            goals.length > 0 ? (
+                                goals.map(goal => {
+                                    const progress = Math.min(goal.currentValue / goal.targetValue, 1);
+                                    const statusLabel = goal.status === 'achieved' ? 'Atteint' : goal.status === 'in_progress' ? 'En cours' : 'Abandonné';
+                                    return (
+                                        <View key={goal.id} style={styles.card}>
+                                            <View style={styles.cardHeader}>
+                                                <View style={styles.row}>
+                                                    <Ionicons name="radio-button-on" size={20} color="#a29bfe" />
+                                                    <Text style={styles.cardTitle}>{goal.title}</Text>
+                                                </View>
+                                                <View style={[styles.badge, goal.status === 'achieved' ? styles.badgeBlue : styles.badgeGreenLight]}>
+                                                    <Text style={[styles.badgeText, goal.status === 'achieved' ? styles.textBlue : styles.textGreen]}>
+                                                        {statusLabel}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                            <Text style={styles.cardSubtext}>{goal.category}</Text>
+                                            <View style={styles.progressLabelRow}>
+                                                <Text style={styles.progressLabel}>Objectif: {goal.targetValue} {goal.unit}</Text>
+                                                <Text style={styles.progressLabel}>Actuel: {goal.currentValue} {goal.unit}</Text>
+                                            </View>
+                                            <View style={styles.progressBarBg}>
+                                                <View style={[styles.progressBarFill, { width: `${progress * 100}%`, backgroundColor: '#a29bfe' }]} />
+                                            </View>
+                                            <View style={styles.infoRow}>
+                                                <Ionicons name="time-outline" size={16} color="#666" />
+                                                <Text style={styles.infoText}>
+                                                    Échéance: {formatDate(goal.deadline instanceof Date ? goal.deadline : new Date(goal.deadline))}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    );
+                                })
+                            ) : (
+                                <Text style={styles.emptyText}>Aucun objectif enregistré.</Text>
+                            )
+                        )}
 
-                    {activeTab === 'vitals' && (
-                        <>
-                            <VitalSignCard
-                                time="19 Déc 2024 à 14:30"
-                                statusType="Critique"
-                                metrics={[
-                                    { label: 'Tension', value: '142/95', icon: 'heart', color: '#e74c3c' },
-                                    { label: 'Glycémie', value: '158 mg/dL', icon: 'water', color: '#3498db' },
-                                    { label: 'FC', value: '88 bpm', icon: 'pulse', color: '#27ae60' },
-                                    { label: 'Température', value: '37.2°C', icon: 'thermometer', color: '#e67e22' },
-                                ]}
-                            />
-                            <VitalSignCard
-                                time="18 Déc 2024 à 20:00"
-                                statusType="Attention"
-                                metrics={[
-                                    { label: 'Tension', value: '145/93', icon: 'heart', color: '#e74c3c' },
-                                    { label: 'Glycémie', value: '155 mg/dL', icon: 'water', color: '#3498db' },
-                                ]}
-                            />
-                        </>
-                    )}
+                        {activeTab === 'vitals' && (
+                            vitalSigns.length > 0 ? (
+                                vitalSigns.map(vital => {
+                                    const statusType = getPatientStatus({
+                                        systolic: vital.systolic || 0,
+                                        diastolic: vital.diastolic || 0,
+                                        spo2: vital.oxygenSaturation || 100,
+                                    });
+                                    return (
+                                        <View key={vital.id} style={[styles.card, statusType === 'Critique' && styles.cardCritique]}>
+                                            <View style={styles.cardHeader}>
+                                                <View style={styles.row}>
+                                                    <Ionicons name="time-outline" size={20} color="#666" />
+                                                    <Text style={styles.cardTitle}>
+                                                        {vital.createdAt ? formatDate(vital.createdAt) : 'N/A'}
+                                                    </Text>
+                                                </View>
+                                                <View style={[styles.badge, statusType === 'Critique' ? styles.badgeRed : statusType === 'Attention' ? styles.badgeOrange : styles.badgeGreenLight]}>
+                                                    <Text style={[styles.badgeText, statusType === 'Critique' ? styles.textRed : statusType === 'Attention' ? styles.textOrange : styles.textGreen]}>
+                                                        {statusType}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                            <View style={styles.vitalGrid}>
+                                                {vital.systolic > 0 && (
+                                                    <View style={styles.vitalItem}>
+                                                        <Ionicons name="heart" size={18} color="#e74c3c" />
+                                                        <View style={{ marginLeft: 8 }}>
+                                                            <Text style={styles.vitalLabel}>Tension</Text>
+                                                            <Text style={styles.vitalValue}>{vital.systolic}/{vital.diastolic}</Text>
+                                                        </View>
+                                                    </View>
+                                                )}
+                                                {vital.bloodSugar > 0 && (
+                                                    <View style={styles.vitalItem}>
+                                                        <Ionicons name="water" size={18} color="#3498db" />
+                                                        <View style={{ marginLeft: 8 }}>
+                                                            <Text style={styles.vitalLabel}>Glycémie</Text>
+                                                            <Text style={styles.vitalValue}>{vital.bloodSugar} mg/dL</Text>
+                                                        </View>
+                                                    </View>
+                                                )}
+                                                {vital.heartRate > 0 && (
+                                                    <View style={styles.vitalItem}>
+                                                        <Ionicons name="pulse" size={18} color="#27ae60" />
+                                                        <View style={{ marginLeft: 8 }}>
+                                                            <Text style={styles.vitalLabel}>FC</Text>
+                                                            <Text style={styles.vitalValue}>{vital.heartRate} bpm</Text>
+                                                        </View>
+                                                    </View>
+                                                )}
+                                                {vital.temperature > 0 && (
+                                                    <View style={styles.vitalItem}>
+                                                        <Ionicons name="thermometer" size={18} color="#e67e22" />
+                                                        <View style={{ marginLeft: 8 }}>
+                                                            <Text style={styles.vitalLabel}>Temp.</Text>
+                                                            <Text style={styles.vitalValue}>{vital.temperature}°C</Text>
+                                                        </View>
+                                                    </View>
+                                                )}
+                                                {vital.oxygenSaturation > 0 && (
+                                                    <View style={styles.vitalItem}>
+                                                        <Ionicons name="fitness" size={18} color="#9b59b6" />
+                                                        <View style={{ marginLeft: 8 }}>
+                                                            <Text style={styles.vitalLabel}>SpO2</Text>
+                                                            <Text style={styles.vitalValue}>{vital.oxygenSaturation}%</Text>
+                                                        </View>
+                                                    </View>
+                                                )}
+                                            </View>
+                                        </View>
+                                    );
+                                })
+                            ) : (
+                                <Text style={styles.emptyText}>Aucun signe vital enregistré.</Text>
+                            )
+                        )}
 
-                    {activeTab === 'symp' && (
-                        <>
-                            <SymptomCard
-                                title="Douleur thoracique persistante"
-                                time="19 Déc 2024 à 14:30"
-                                severity="Sévère"
-                                description="Douleur qui irradie vers le bras gauche"
-                            />
-                            <SymptomCard
-                                title="Essoufflement lors de la marche"
-                                time="19 Déc 2024 à 08:15"
-                                severity="Modéré"
-                            />
-                        </>
-                    )}
-                </View>
+                        {activeTab === 'symp' && (
+                            symptoms.length > 0 ? (
+                                symptoms.map(symptom => {
+                                    const severity = getSeverityLabel(symptom.severity);
+                                    return (
+                                        <View key={symptom.id} style={styles.card}>
+                                            <View style={styles.cardHeader}>
+                                                <View style={styles.row}>
+                                                    <Ionicons name="document-text-outline" size={20} color="#3498db" />
+                                                    <Text style={styles.cardTitle}>{symptom.title}</Text>
+                                                </View>
+                                                <View style={[styles.badge, severity === 'Sévère' ? styles.badgeRed : severity === 'Modéré' ? styles.badgeOrange : styles.badgeGreenLight]}>
+                                                    <Text style={[styles.badgeText, severity === 'Sévère' ? styles.textRed : severity === 'Modéré' ? styles.textOrange : styles.textGreen]}>
+                                                        {severity}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                            <View style={styles.infoRow}>
+                                                <Ionicons name="time-outline" size={16} color="#666" />
+                                                <Text style={styles.infoText}>
+                                                    {formatDate(symptom.date instanceof Date ? symptom.date : new Date(symptom.date))}
+                                                </Text>
+                                            </View>
+                                            {symptom.notes && (
+                                                <View style={styles.descriptionBox}>
+                                                    <Text style={styles.descriptionText}>{symptom.notes}</Text>
+                                                </View>
+                                            )}
+                                        </View>
+                                    );
+                                })
+                            ) : (
+                                <Text style={styles.emptyText}>Aucun symptôme enregistré.</Text>
+                            )
+                        )}
+                    </View>
+                )}
             </ScrollView>
         </ThemedView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#F9FAFB'
-    },
-    content: {
-        padding: 20,
-        paddingBottom: 40
-    },
+    container: { flex: 1, backgroundColor: '#F9FAFB' },
+    content: { padding: 20, paddingBottom: 40 },
     filterSection: {
-        backgroundColor: 'white',
-        borderRadius: 20,
-        padding: 16,
-        margin: 20,
-        borderWidth: 1,
-        borderColor: '#f2f2f2'
+        backgroundColor: 'white', borderRadius: 20, padding: 16,
+        margin: 20, borderWidth: 1, borderColor: '#f2f2f2'
     },
-    filterHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 20
-    },
-    filterTitle: {
-        flex: 1,
-        fontSize: 18,
-        fontWeight: '700',
-        marginLeft: 10,
-        color: '#2d3436'
-    },
-    dateRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 20
-    },
+    filterHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+    filterTitle: { flex: 1, fontSize: 18, fontWeight: '700', marginLeft: 10, color: '#2d3436' },
+    dateRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
     dateInputWrapper: { width: '48%' },
-    dateLabel: {
-        fontSize: 13,
-        color: '#7f8c8d',
-        marginBottom: 6
-    },
-    dateInput: {
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
-        borderRadius: 12,
-        padding: 8,
-        backgroundColor: '#fff'
-    },
-    dateText: {
-        fontSize: 14,
-        color: '#2d3436'
-    },
-    applyBtn: {
-        backgroundColor: Colors.light.tint,
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 14,
-        borderRadius: 14
-    },
-    applyBtnText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 15,
-        marginLeft: 8
-    },
+    dateLabel: { fontSize: 13, color: '#7f8c8d', marginBottom: 6 },
+    dateInput: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 8, backgroundColor: '#fff' },
     tabs: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        backgroundColor: '#E5E7EB',
-        borderRadius: 12,
-        padding: 2,
+        flexDirection: 'row', justifyContent: 'space-between',
+        backgroundColor: '#E5E7EB', borderRadius: 12, padding: 2,
     },
-    tab: {
-        flex: 1,
-        height: 40,
-        borderRadius: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    tabActive: {
-        backgroundColor: '#fff'
-    },
-    listTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#111827',
-        marginVertical: 12,
-    },
+    tab: { flex: 1, height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+    tabActive: { backgroundColor: '#fff' },
+    listTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827', marginVertical: 12 },
     card: {
-        backgroundColor: 'white',
-        borderRadius: 22,
-        padding: 18,
-        marginBottom: 14,
-        borderWidth: 1,
-        borderColor: '#f0f0f0'
+        backgroundColor: 'white', borderRadius: 22, padding: 18,
+        marginBottom: 14, borderWidth: 1, borderColor: '#f0f0f0'
     },
-    cardCritique: {
-        borderColor: '#fab1a0',
-        backgroundColor: '#fff9f9'
-    },
-    cardHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start'
-    },
-    row: {
-        flexDirection: 'row',
-        alignItems: 'center'
-    },
-    cardTitle: {
-        fontSize: 16,
-        fontWeight: '700',
-        marginLeft: 8,
-        color: '#2d3436'
-    },
-    cardSubtext: {
-        color: '#636e72',
-        fontSize: 14,
-        marginTop: 4,
-        marginBottom: 12
-    },
-    infoRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 10
-    },
-    infoText: {
-        color: '#636e72',
-        fontSize: 13,
-        marginLeft: 6
-    },
-    doctorText: {
-        color: '#b2bec3',
-        fontSize: 12,
-        marginTop: 6
-    },
-    badge: {
-        paddingHorizontal: 10,
-        paddingVertical: 5,
-        borderRadius: 8
-    },
+    cardCritique: { borderColor: '#fab1a0', backgroundColor: '#fff9f9' },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    row: { flexDirection: 'row', alignItems: 'center' },
+    cardTitle: { fontSize: 16, fontWeight: '700', marginLeft: 8, color: '#2d3436' },
+    cardSubtext: { color: '#636e72', fontSize: 14, marginTop: 4, marginBottom: 12 },
+    infoRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+    infoText: { color: '#636e72', fontSize: 13, marginLeft: 6 },
+    doctorText: { color: '#b2bec3', fontSize: 12, marginTop: 6 },
+    badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
     badgeGreen: { backgroundColor: '#e6f7ee' },
     badgeGreenLight: { backgroundColor: '#f0fff4' },
     badgeGray: { backgroundColor: '#f5f6f7' },
     badgeBlue: { backgroundColor: '#eef2ff' },
     badgeRed: { backgroundColor: '#fff0f0' },
     badgeOrange: { backgroundColor: '#fff9db' },
-    badgeText: {
-        fontSize: 12,
-        fontWeight: '800'
-    },
+    badgeText: { fontSize: 12, fontWeight: '800' },
     textGreen: { color: '#00b85c' },
     textGray: { color: '#95a5a6' },
     textBlue: { color: '#3498db' },
     textRed: { color: '#e74c3c' },
     textOrange: { color: '#f39c12' },
-    progressLabelRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 8
-    },
-    progressLabel: {
-        fontSize: 13,
-        color: '#636e72'
-    },
-    progressBarBg: {
-        height: 8,
-        backgroundColor: '#f1f2f6',
-        borderRadius: 4,
-        overflow: 'hidden'
-    },
-    progressBarFill: {
-        height: '100%',
-        borderRadius: 4
-    },
-    vitalGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        marginTop: 12
-    },
-    vitalItem: {
-        width: '50%',
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginVertical: 8
-    },
-    vitalLabel: {
-        fontSize: 12,
-        color: '#95a5a6'
-    },
-    vitalValue: {
-        fontSize: 15,
-        fontWeight: '700',
-        color: '#2d3436'
-    },
-    descriptionBox: {
-        backgroundColor: '#f8f9fa',
-        padding: 14,
-        borderRadius: 12,
-        marginTop: 14
-    },
-    descriptionText: {
-        color: '#2d3436',
-        fontSize: 14,
-        lineHeight: 20
-    }
+    progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+    progressLabel: { fontSize: 13, color: '#636e72' },
+    progressBarBg: { height: 8, backgroundColor: '#f1f2f6', borderRadius: 4, overflow: 'hidden' },
+    progressBarFill: { height: '100%', borderRadius: 4 },
+    vitalGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 12 },
+    vitalItem: { width: '50%', flexDirection: 'row', alignItems: 'center', marginVertical: 8 },
+    vitalLabel: { fontSize: 12, color: '#95a5a6' },
+    vitalValue: { fontSize: 15, fontWeight: '700', color: '#2d3436' },
+    descriptionBox: { backgroundColor: '#f8f9fa', padding: 14, borderRadius: 12, marginTop: 14 },
+    descriptionText: { color: '#2d3436', fontSize: 14, lineHeight: 20 },
+    emptyText: { textAlign: 'center', color: '#9CA3AF', marginTop: 40, fontSize: 16 },
 });

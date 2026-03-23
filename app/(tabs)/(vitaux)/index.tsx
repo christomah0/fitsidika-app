@@ -13,9 +13,9 @@ import {
 } from 'react-native';
 import { BarChart } from 'react-native-chart-kit';
 
-// --- MODIFICATION ICI : Ajout de addDoc ---
 import { db } from '@/services/firebase/firebaseConfig';
 import { addDoc, collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { useAuth } from '@/hooks/use-auth';
 
 import { SuccessModal } from '../../../components/SuccessModal';
 import { NewVitalRecordData, VitalInputModal } from '../../../components/VitalInputModal';
@@ -25,35 +25,48 @@ type MetricType = 'Tension' | 'Cœur' | 'Glycémie' | 'SpO2' | 'Température';
 type PeriodType = 'Jour' | 'Mois' | 'Année';
 
 const METRICS: MetricType[] = ['Tension', 'Cœur', 'Glycémie', 'SpO2', 'Température'];
-const PERIODS: PeriodType[] = ['Jour', 'Mois', 'Année']; 
+const PERIODS: PeriodType[] = ['Jour', 'Mois', 'Année'];
 const WEEK_DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-const PATIENT_ID = 'patient_#8';
-const CHART_WIDTH = Dimensions.get('window').width - 120; 
+const CHART_WIDTH = Dimensions.get('window').width - 120;
 
 const metricValueMap: Record<MetricType, (r: any) => number> = {
-  Tension: r => r.systolic_bp || 0,
-  Cœur: r => r.heart_rate || 0,
-  Glycémie: r => r.glucose || 0,
-  SpO2: r => r.spo2 || 0,
+  Tension: r => r.systolic_bp || r.systolic || 0,
+  Cœur: r => r.heart_rate || r.heartRate || 0,
+  Glycémie: r => r.glucose || r.bloodSugar || 0,
+  SpO2: r => r.spo2 || r.oxygenSaturation || 0,
   Température: r => r.temperature || 0,
 };
 
 export default function VitauxScreen() {
+  const { user } = useAuth();
+  const patientId = user?.id;
+
   const [selectedMetric, setSelectedMetric] = useState<MetricType>('Tension');
-  const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>('Jour'); 
+  const [selectedPeriod, setSelectedPeriod] = useState<PeriodType>('Jour');
   const [referenceDate, setReferenceDate] = useState(new Date());
-  const [records, setRecords] = useState<any[]>([]); 
+  const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isModalVisible, setModalVisible] = useState(false);
   const [isSuccessModalVisible, setSuccessModalVisible] = useState(false);
 
-  /* --- LOGIQUE DE SAUVEGARDE AJOUTÉE --- */
   const handleSaveRecord = async (data: NewVitalRecordData) => {
+    if (!patientId) return;
     try {
-      await addDoc(collection(db, "patients", PATIENT_ID, "vitals"), {
-        timestamp: Date.now(), // Enregistre l'heure actuelle
+      await addDoc(collection(db, "patients", patientId, "vitalSigns"), {
+        systolic: parseFloat(data.systolic),
+        diastolic: parseFloat(data.diastolic),
+        heartRate: parseFloat(data.heartRate),
+        bloodSugar: parseFloat(data.glucose),
+        oxygenSaturation: parseFloat(data.spo2),
+        temperature: parseFloat(data.temperature),
+        createdAt: new Date(),
+      });
+
+      // Also write to vitals subcollection for backward compat
+      await addDoc(collection(db, "patients", patientId, "vitals"), {
+        timestamp: Date.now(),
         systolic_bp: parseFloat(data.systolic),
         diastolic_bp: parseFloat(data.diastolic),
         heart_rate: parseFloat(data.heartRate),
@@ -62,8 +75,8 @@ export default function VitauxScreen() {
         temperature: parseFloat(data.temperature),
       });
 
-      setModalVisible(false); // Ferme la saisie
-      setSuccessModalVisible(true); // Affiche le succès
+      setModalVisible(false);
+      setSuccessModalVisible(true);
     } catch (error) {
       console.error("Erreur Firebase:", error);
       Alert.alert("Erreur", "Impossible d'enregistrer les données.");
@@ -99,9 +112,10 @@ export default function VitauxScreen() {
 
   /* ================= FIREBASE (LECTURE) ================= */
   useEffect(() => {
+    if (!patientId) return;
     setLoading(true);
     const q = query(
-      collection(db, "patients", PATIENT_ID, "vitals"),
+      collection(db, "patients", patientId, "vitals"),
       where("timestamp", ">=", dateRange.start.getTime()),
       where("timestamp", "<=", dateRange.end.getTime()),
       orderBy("timestamp", "asc")
@@ -111,11 +125,11 @@ export default function VitauxScreen() {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [dateRange]);
+  }, [dateRange, patientId]);
 
   /* ================= CALCULS GRAPHIQUE & STATS ================= */
   const chartData = useMemo(() => {
-    let labels = selectedPeriod === 'Jour' ? WEEK_DAYS : 
+    let labels = selectedPeriod === 'Jour' ? WEEK_DAYS :
                  selectedPeriod === 'Mois' ? ['S1', 'S2', 'S3', 'S4'] :
                  ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
     let values = new Array(labels.length).fill(0);
@@ -147,6 +161,16 @@ export default function VitauxScreen() {
       max: Math.max(...cleanValues).toString(),
     };
   }, [chartData]);
+
+  if (!patientId) {
+    return (
+      <ThemedView style={styles.screen}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text>Chargement...</Text>
+        </View>
+      </ThemedView>
+    );
+  }
 
   return (
     <ThemedView style={styles.screen}>
@@ -194,7 +218,7 @@ export default function VitauxScreen() {
               data={chartData} width={CHART_WIDTH} height={200} fromZero showValuesOnTopOfBars
               chartConfig={{ backgroundColor: '#fff', backgroundGradientFrom: '#fff', backgroundGradientTo: '#fff', color: (opacity = 1) => `rgba(74, 144, 226, ${opacity})`, labelColor: () => '#94a3b8', barPercentage: 0.5, propsForLabels: { fontSize: 9 } }}
               style={{ borderRadius: 16, paddingRight: 45, marginTop: 10 }}
-              yAxisLabel="" 
+              yAxisLabel=""
               yAxisSuffix=""
             />
           )}
@@ -207,7 +231,6 @@ export default function VitauxScreen() {
         </View>
       </View>
 
-      {/* --- MODIFICATION ICI : onSave={handleSaveRecord} --- */}
       <VitalInputModal visible={isModalVisible} onClose={() => setModalVisible(false)} onSave={handleSaveRecord} />
       <SuccessModal visible={isSuccessModalVisible} onClose={() => setSuccessModalVisible(false)} />
     </ThemedView>
