@@ -5,19 +5,17 @@ import { Stack, useRouter } from "expo-router";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useAuth } from "@/hooks/use-auth";
+import { useNotificationCount } from "@/hooks/use-notification-count";
 
 export default function DoctorLayout() {
     const router = useRouter();
     const {user, isLoading} = useAuth();
+    const notificationCount = useNotificationCount();
 
-    const role = user?.role === 'doctor' ? 'Médecin' :
-                 user?.role === 'patient' ? 'Infirmier' :
-                 user?.role === 'admin' ? 'Administrateur' :
-                 'Utilisateur';
+    const displayName = isLoading ? 'Chargement...' : (user?.name || 'Médecin');
 
     const handleNotificationsPress = () => {
-        // router.push('notifications');
-        console.log('Notifications pressed');
+        router.push('/notifications' as any);
     };
 
     return (
@@ -30,8 +28,8 @@ export default function DoctorLayout() {
                         header: () => (
                             <AppDoctorTopBar
                                 onNotificationsPress={handleNotificationsPress}
-                                userName={ isLoading ? 'Chargement...' : role}
-                                notificationsCount={7}
+                                userName={displayName}
+                                notificationsCount={notificationCount}
                             />
                         ),
                     }}
@@ -53,6 +51,18 @@ export default function DoctorLayout() {
                     options={{
                         headerShown: true,
                         title: 'Historique Médical',
+                        headerLeft: () => (
+                            <TouchableOpacity onPress={() => router.back()}>
+                                <IconSymbol name="chevron.left" size={20} color="#000" />
+                            </TouchableOpacity>
+                        )
+                    }}
+                />
+                <Stack.Screen
+                    name="patients/chat/[id]"
+                    options={{
+                        headerShown: true,
+                        title: 'Messagerie',
                         headerLeft: () => (
                             <TouchableOpacity onPress={() => router.back()}>
                                 <IconSymbol name="chevron.left" size={20} color="#000" />
