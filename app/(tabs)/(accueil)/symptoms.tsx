@@ -6,7 +6,7 @@ import { ThemedView } from "@/components/themed-view";
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import Slider from '@react-native-community/slider';
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
     KeyboardAvoidingView,
     Modal,
@@ -17,6 +17,12 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { useAuth } from '@/hooks/use-auth';
+import { createPatientSymptom, getLast2Symptoms } from '@/services/firebase/firestoreServices';
+import { Symptom } from '@/types/symptom.type';
+import { formatTime } from '@/utils/date-format';
+import { useFocusEffect } from 'expo-router';
+import Toast from 'react-native-toast-message';
 
 const SYMPTOMS = [
   { id: '1', label: 'Maux de tête', icon: '🤕' },
@@ -30,10 +36,29 @@ const SYMPTOMS = [
 ];
 
 export default function SymptomsScreen() {
+  const { user } = useAuth();
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedSymptom, setSelectedSymptom] = useState('');
   const [severity, setSeverity] = useState(5);
   const [notes, setNotes] = useState('');
+  const [recentSymptoms, setRecentSymptoms] = useState<Symptom[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const loadRecentSymptoms = useCallback(async () => {
+    if (!user) return;
+    try {
+      const symptoms = await getLast2Symptoms(user.id);
+      setRecentSymptoms(symptoms);
+    } catch (err) {
+      console.error('Error loading symptoms:', err);
+    }
+  }, [user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadRecentSymptoms();
+    }, [loadRecentSymptoms])
+  );
 
   const getSeverityColor = (value: number) => {
     if (value <= 3) return '#00B341';
@@ -41,12 +66,29 @@ export default function SymptomsScreen() {
     return '#FF3B30';
   };
 
-  const handleSave = () => {
-    console.log({ selectedSymptom, severity, notes });
-    setModalVisible(false);
-    setSelectedSymptom('');
-    setSeverity(5);
-    setNotes('');
+  const handleSave = async () => {
+    if (!user || !selectedSymptom) return;
+    setSaving(true);
+    try {
+      const symptomLabel = SYMPTOMS.find(s => s.id === selectedSymptom)?.label || 'Symptôme';
+      await createPatientSymptom(user.id, {
+        title: symptomLabel,
+        date: new Date(),
+        severity,
+        notes: notes.trim() || undefined,
+      });
+      Toast.show({ type: 'success', text1: 'Enregistré', text2: 'Symptôme enregistré avec succès.', position: 'bottom' });
+      setModalVisible(false);
+      setSelectedSymptom('');
+      setSeverity(5);
+      setNotes('');
+      loadRecentSymptoms();
+    } catch (err) {
+      console.error('Error saving symptom:', err);
+      Toast.show({ type: 'error', text1: 'Erreur', text2: "Échec de l'enregistrement.", position: 'bottom' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -58,15 +100,24 @@ export default function SymptomsScreen() {
           <ThemedText style={styles.whiteBtnText}>Nouveau Symptôme</ThemedText>
         </TouchableOpacity>
 
-        {/* History Card */}
+        {/* Recent Symptoms */}
         <View style={styles.card}>
-          <ThemedText type="defaultSemiBold" style={{ marginBottom: 12 }}>Dernier relevé</ThemedText>
-          <AppSymptomHistoryCard
-            title="Maux de tête"
-            date="24 Nov 14:30"
-            severity={6}
-            note="Douleur pulsatile au niveau frontal"
-          />
+          <ThemedText type="defaultSemiBold" style={{ marginBottom: 12 }}>Derniers relevés</ThemedText>
+          {recentSymptoms.length > 0 ? (
+            recentSymptoms.map(s => (
+              <AppSymptomHistoryCard
+                key={s.id}
+                title={s.title}
+                date={formatTime(s.date)}
+                severity={s.severity}
+                note={s.notes ?? ''}
+              />
+            ))
+          ) : (
+            <ThemedText style={{ color: '#9CA3AF', textAlign: 'center', paddingVertical: 16 }}>
+              Aucun symptôme enregistré
+            </ThemedText>
+          )}
         </View>
 
         {/* Guide Card */}
@@ -88,7 +139,6 @@ export default function SymptomsScreen() {
             style={styles.modalContentWrapper}
           >
             <View style={styles.modalBody}>
-              {/* HEADER WITH SEPARATOR */}
               <View style={styles.modalHeader}>
                 <ThemedText type="subtitle" style={styles.headerTitle}>Enregistrer un Symptôme</ThemedText>
                 <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeBtn}>
@@ -96,7 +146,6 @@ export default function SymptomsScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* SCROLLABLE CONTENT */}
               <ScrollView
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
@@ -161,14 +210,15 @@ export default function SymptomsScreen() {
                 />
               </ScrollView>
 
-              {/* FOOTER */}
               <View style={styles.footer}>
                 <TouchableOpacity
-                  style={[styles.saveBtn, !selectedSymptom && { opacity: 0.5 }]}
+                  style={[styles.saveBtn, (!selectedSymptom || saving) && { opacity: 0.5 }]}
                   onPress={handleSave}
-                  disabled={!selectedSymptom}
+                  disabled={!selectedSymptom || saving}
                 >
-                  <ThemedText style={styles.saveBtnText}>Enregistrer</ThemedText>
+                  <ThemedText style={styles.saveBtnText}>
+                    {saving ? 'Enregistrement...' : 'Enregistrer'}
+                  </ThemedText>
                 </TouchableOpacity>
               </View>
             </View>
@@ -180,7 +230,6 @@ export default function SymptomsScreen() {
 }
 
 const styles = StyleSheet.create({
-  // --- Main Screen Styles ---
   mainAddBtn: {
     backgroundColor: Colors.light.tint,
     flexDirection: 'row',
@@ -207,119 +256,33 @@ const styles = StyleSheet.create({
     }),
   },
   whiteBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
-
-  // --- Modal Specific Styles ---
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end'
-  },
-  modalContentWrapper: {
-    width: '100%',
-    height: '88%',
-  },
-  modalBody: {
-    flex: 1,
-    backgroundColor: 'white',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-  },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalContentWrapper: { width: '100%', height: '88%' },
+  modalBody: { flex: 1, backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32 },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0', // The Separator
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16,
+    borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
   },
-  headerTitle: { 
-    fontWeight: '700', 
-    fontSize: 20, 
-    color: '#1e293b' 
-  },
-  closeBtn: { 
-    backgroundColor: '#F0F0F0', 
-    padding: 8, 
-    borderRadius: 20 
-  },
-  scrollContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 20 
-  },
-  label: { 
-    fontSize: 15, 
-    color: '#4A5568', 
-    marginBottom: 12, 
-    fontWeight: '500' 
-  },
-  grid: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    justifyContent: 'space-between', 
-    marginBottom: 10 
-  },
-  slider: { 
-    width: '100%', 
-    height: 40 
-  },
-  severityStatusRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    marginBottom: 8 
-  },
-  statusText: { 
-    fontSize: 14, 
-    fontWeight: '600' 
-  },
-  numberRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    marginTop: 5 
-  },
-  numBox: { 
-    width: 32, 
-    height: 32, 
-    borderRadius: 8, 
-    backgroundColor: '#F0F4F8', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  numLabel: { 
-    fontSize: 12, 
-    fontWeight: '700', 
-    color: '#718096' 
-  },
+  headerTitle: { fontWeight: '700', fontSize: 20, color: '#1e293b' },
+  closeBtn: { backgroundColor: '#F0F0F0', padding: 8, borderRadius: 20 },
+  scrollContainer: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 20 },
+  label: { fontSize: 15, color: '#4A5568', marginBottom: 12, fontWeight: '500' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 10 },
+  slider: { width: '100%', height: 40 },
+  severityStatusRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  statusText: { fontSize: 14, fontWeight: '600' },
+  numberRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 },
+  numBox: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#F0F4F8', justifyContent: 'center', alignItems: 'center' },
+  numLabel: { fontSize: 12, fontWeight: '700', color: '#718096' },
   textArea: {
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
-    padding: 12,
-    minHeight: 100,
-    textAlignVertical: 'top',
-    fontSize: 15,
-    backgroundColor: '#FFFFFF',
-    marginBottom: 10
+    borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, padding: 12,
+    minHeight: 100, textAlignVertical: 'top', fontSize: 15, backgroundColor: '#FFFFFF', marginBottom: 10
   },
   footer: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-    paddingBottom: Platform.OS === 'ios' ? 34 : 15
+    paddingHorizontal: 20, paddingVertical: 12, backgroundColor: 'white',
+    borderTopWidth: 1, borderTopColor: '#F0F0F0', paddingBottom: Platform.OS === 'ios' ? 34 : 15
   },
-  saveBtn: { 
-    backgroundColor: Colors.light.tint, 
-    padding: 18, 
-    borderRadius: 14, 
-    alignItems: 'center' 
-  },
-  saveBtnText: { 
-    color: 'white', 
-    fontWeight: 'bold', 
-    fontSize: 16 
-  }
+  saveBtn: { backgroundColor: Colors.light.tint, padding: 18, borderRadius: 14, alignItems: 'center' },
+  saveBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 }
 });

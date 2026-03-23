@@ -1,13 +1,19 @@
 import { AppMenuOverlay } from "@/components/app-menu-overlay";
 import { AppTopBar } from "@/components/app-top-bar";
+import { useAuth } from "@/hooks/use-auth";
+import { useNotificationCount } from "@/hooks/use-notification-count";
 import { Route, Stack, useRouter } from "expo-router";
 import { useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { IconSymbol } from "@/components/ui/icon-symbol";
+import { TouchableOpacity } from "react-native";
 
 export default function MessagesLayout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const notificationCount = useNotificationCount();
 
   const [isMenuVisible, setIsMenuVisible] = useState(false);
 
@@ -20,8 +26,7 @@ export default function MessagesLayout() {
   };
 
   const handleNotificationsPress = () => {
-    // router.push('notifications');
-    console.log('Notifications pressed');
+    router.push('/notifications' as any);
   };
 
   const menuStartPosition = insets.top + 140;
@@ -34,15 +39,28 @@ export default function MessagesLayout() {
             <AppTopBar
               onMenuPress={handleMenuToggle}
               onNotificationsPress={handleNotificationsPress}
-              userName="Utilisateur"
-              notificationsCount={4}
+              userName={user?.name || 'Utilisateur'}
+              notificationsCount={notificationCount}
             />
           )
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: true }} />
+        <Stack.Screen
+          name="chat"
+          options={{
+            headerShown: true,
+            header: undefined,
+            title: 'Conversation',
+            headerLeft: () => (
+              <TouchableOpacity onPress={() => router.back()}>
+                <IconSymbol name="chevron.left" size={20} color="#000" />
+              </TouchableOpacity>
+            ),
+          }}
+        />
       </Stack>
-      
+
       <AppMenuOverlay
         isVisible={isMenuVisible}
         onClose={handleMenuToggle}
